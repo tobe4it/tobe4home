@@ -1,0 +1,78 @@
+---
+- name: Bergen Platform | Deploy Syslog Operations Analyzer
+  hosts: "{{ bootstrap_syslog_target | default('syslog_nodes') }}"
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Ensure analyzer state directory exists
+      ansible.builtin.file:
+        path: /var/lib/bergen-syslog
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Install analyzer executable
+      ansible.builtin.copy:
+        src: ../roles/syslog/files/bergen_syslog_analyzer.py
+        dest: /usr/local/bin/bergen-syslog-analyzer
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install analyzer service
+      ansible.builtin.copy:
+        src: ../roles/syslog/files/bergen-syslog-analyzer.service
+        dest: /etc/systemd/system/bergen-syslog-analyzer.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Install analyzer timer
+      ansible.builtin.copy:
+        src: ../roles/syslog/files/bergen-syslog-analyzer.timer
+        dest: /etc/systemd/system/bergen-syslog-analyzer.timer
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Flush systemd reload before initial ingestion
+      ansible.builtin.meta: flush_handlers
+
+    - name: Stop analyzer timer during deployment
+      ansible.builtin.systemd:
+        name: bergen-syslog-analyzer.timer
+        state: stopped
+      failed_when: false
+
+    - name: Wait for any running analyzer service to finish
+      ansible.builtin.command: systemctl is-active bergen-syslog-analyzer.service
+      register: analyzer_service_state
+      changed_when: false
+      failed_when: false
+      retries: 30
+      delay: 1
+      until: analyzer_service_state.rc != 0
+
+    - name: Run initial ingestion
+      ansible.builtin.command: /usr/local/bin/bergen-syslog-analyzer run-once
+      register: analyzer_initial
+      changed_when: false
+
+    - name: Show initial analyzer result
+      ansible.builtin.debug:
+        var: analyzer_initial.stdout
+
+    - name: Enable and start analyzer timer
+      ansible.builtin.systemd:
+        name: bergen-syslog-analyzer.timer
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

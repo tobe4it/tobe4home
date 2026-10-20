@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Conservatively reconcile abandoned selfHOST DNS-01 reservations.
+
+This is an operator-only recovery tool. It never writes to the selfHOST API,
+and it refuses to modify local state unless *one or two* known reserved slots
+are confirmed idle on *all* configured authoritative DNS servers.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import selfhost_acme_hook as hook
+
+
+def assert_no_running_certbot():
+    """Fail closed when a certbot process could own an active DNS challenge."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        raise hook.HookError("Cannot inspect running Certbot processes")
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            data = (entry / "cmdline").read_bytes()
+        except FileNotFoundError:
+            continue  # exited during enumeration
+        except OSError as exc:
+            raise hook.HookError("Cannot inspect all running processes") from exc
+        args = [a.decode("utf-8", errors="replace") for a in data.split(b"\0") if a]
+        first = args[:4]
+        if any(Path(a).name in ("certbot", "certbot-auto") for a in first):
+            raise hook.HookError("A Certbot process is running; refuse reconciliation")
+        if any(a == "certbot" for a in first):
+            raise hook.HookError("A Certbot process is running; refuse reconciliation")
+
+
+def check_exact_orphans(cfg, state):
+    """Permit one or two known 'reserved' entries, never presented/cleaning."""
+    ids = {str(i) for i in cfg["record_ids"]}
+    if not 1 <= len(state) <= 2 or not set(state).issubset(ids):
+        raise hook.HookError("Reservations must use one or two configured slots")
+    for slot, entry in state.items():
+        if not isinstance(entry, dict) or entry.get("status") != "reserved":
+            raise hook.HookError("Non-reserved reservation found; manual review required")
+        if entry.get("identifier") not in (cfg["zone"], "*." + cfg["zone"]):
+            raise hook.HookError("Unexpected reservation identifier")
+        if not isinstance(entry.get("validation"), str) or not hook.DNS01.fullmatch(entry["validation"]):
+            raise hook.HookError("Invalid reserved validation token")
+    if len({item["validation"] for item in state.values()}) != len(state):
+        raise hook.HookError("Reservation validation values must be distinct")
+
+
+def assert_remote_slots_idle(cfg, state):
+    name = "_acme-challenge." + cfg["zone"]
+    idle = {"selfhost-api-idle-" + str(slot) for slot in cfg["record_ids"]}
+    validations = {item["validation"] for item in state.values()}
+    for server in cfg["nameservers"]:
+        records = hook.authoritative_txt(server, name)
+        if not idle.issubset(records):
+            raise hook.HookError("Not all configured DNS slots are idle on every nameserver")
+        if records & validations:
+            raise hook.HookError("Old validation token still appears in authoritative DNS")
+
+
+def create_private_backup(path, state):
+    backup = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         prefix="reconciled-", suffix=".json",
+                                         dir=path.parent, delete=False) as handle:
+            backup = Path(handle.name)
+            os.fchmod(handle.fileno(), 0o600)
+            json.dump(state, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return backup
+    except BaseException:
+        if backup is not None:
+            backup.unlink(missing_ok=True)
+        raise
+
+
+def reconcile(cfg, *, apply=False, state_dir=hook.DEFAULT_STATE_DIR):
+    assert_no_running_certbot()
+    with hook.exclusive_state(state_dir) as (state, path):
+        if not state:
+            assert_remote_slots_idle(cfg, state)
+            print("ALREADY_CLEAN: No local reservations; both DNS slots idle")
+            return
+        check_exact_orphans(cfg, state)
+        assert_remote_slots_idle(cfg, state)
+        assert_no_running_certbot()
+        if not apply:
+            print(f"READY: {len(state)} abandoned reservation(s); both DNS slots idle")
+            return
+        count = len(state)
+        create_private_backup(path, state)
+        hook.save_state(path, {})
+        print(f"RECONCILED: {count} orphaned reservation(s) cleared; private backup retained")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Safe local selfHOST orphan recovery")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--check", action="store_true")
+    group.add_argument("--apply", action="store_true")
+    parser.add_argument("--instance", help="Optional isolated ACME instance slug; omit for legacy")
+    args = parser.parse_args(argv)
+    if os.geteuid() != 0:
+        raise hook.HookError("Recovery must run as root")
+    os.umask(0o077)
+    if args.instance is None:
+        cfg = hook.load_config()
+        state_dir = hook.DEFAULT_STATE_DIR
+        if cfg.get("state_dir", state_dir) != state_dir:
+            raise hook.HookError("Legacy recovery requires legacy state directory")
+    else:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", args.instance):
+            raise hook.HookError("Invalid isolated ACME instance slug")
+        state_dir = "/var/lib/selfhost-acme/instances/" + args.instance
+        cfg_path = "/etc/letsencrypt/selfhost-acme.d/" + args.instance + ".json"
+        cfg = hook.load_config(cfg_path)
+        if cfg.get("state_dir") != state_dir:
+            raise hook.HookError("Isolated instance state path does not match its configuration")
+    reconcile(cfg, apply=args.apply, state_dir=state_dir)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (hook.HookError, OSError, ValueError, json.JSONDecodeError) as exc:
+        print("selfHOST reservation recovery refused: " + str(exc), file=sys.stderr)
+        sys.exit(1)

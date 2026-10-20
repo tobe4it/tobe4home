@@ -1,0 +1,14 @@
+---
+galaxy_info:
+
+  role_name: ollama
+
+  author: Bergen Platform
+
+  description: Installiert den Ollama AI Server
+
+  license: proprietary
+
+  min_ansible_version: "2.16"
+
+dependencies: []

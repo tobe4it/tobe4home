@@ -28,5 +28,5 @@ This repository is being populated from reviewed, completed infrastructure compo
 
 ## Documentation
 
-English and German setup and operations documentation will be provided under `docs/`. A newcomer path starts with infrastructure prerequisites and basic security; advanced integrations are optional.
+English and German setup and operations documentation is available under `docs/` and `docs/handbook/`. A newcomer path starts with infrastructure prerequisites and basic security; advanced integrations are optional.
 

@@ -1,0 +1,182 @@
+---
+###############################################################################
+#
+# Bergen Platform
+#
+# Playbook:
+#   create-lxc.yml
+#
+# Purpose:
+#   Create a generic Proxmox LXC container.
+#
+# Responsibilities:
+#   - Validate required variables
+#   - Create the LXC through the Proxmox API
+#   - Report the provisioning result
+#
+# Not included:
+#   - Starting the LXC
+#   - Runtime network discovery
+#   - Runtime inventory registration
+#   - Linux baseline configuration
+#
+###############################################################################
+
+- name: Create generic Proxmox LXC
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    ###########################################################################
+    # Validation
+    ###########################################################################
+
+    - name: Erforderliche Proxmox-Variablen prüfen
+      ansible.builtin.assert:
+        that:
+          - pve_api_host is defined
+          - pve_api_host | string | length > 0
+
+          - pve_api_user is defined
+          - pve_api_user | string | length > 0
+
+          - pve_api_password is defined
+          - pve_api_password | string | length > 0
+
+          - pve_node is defined
+          - pve_node | string | length > 0
+
+        fail_msg: >-
+          Für den Zugriff auf die Proxmox-API fehlen erforderliche Variablen.
+
+        success_msg: >-
+          Alle erforderlichen Proxmox-Variablen sind vorhanden.
+
+    - name: Erforderliche LXC-Variablen prüfen
+      ansible.builtin.assert:
+        that:
+          - lxc_vmid is defined
+          - lxc_vmid | int > 0
+
+          - lxc_hostname is defined
+          - lxc_hostname | string | length > 0
+
+          - lxc_template is defined
+          - lxc_template | string | length > 0
+
+          - lxc_storage is defined
+          - lxc_storage | string | length > 0
+
+          - lxc_rootfs_size is defined
+          - lxc_rootfs_size | int > 0
+
+          - lxc_cores is defined
+          - lxc_cores | int > 0
+
+          - lxc_memory is defined
+          - lxc_memory | int > 0
+
+          - lxc_swap is defined
+          - lxc_swap | int >= 0
+
+          - lxc_root_password is defined
+          - lxc_root_password | string | length > 0
+
+          - lxc_ssh_public_key is defined
+          - lxc_ssh_public_key | string | length > 0
+
+          - lxc_unprivileged is defined
+          - lxc_onboot is defined
+
+          - lxc_bridge is defined
+          - lxc_bridge | string | length > 0
+
+          - lxc_ip is defined
+          - lxc_ip | string | length > 0
+
+          - lxc_ip6 is defined
+          - lxc_ip6 | string | length > 0
+
+        fail_msg: >-
+          Für die LXC-Erstellung fehlen erforderliche Variablen.
+          Prüfe die übergebene Variablendatei.
+
+        success_msg: >-
+          Alle erforderlichen LXC-Variablen sind vorhanden.
+
+    ###########################################################################
+    # Provisioning
+    ###########################################################################
+
+    - name: LXC "{{ lxc_hostname }}" erstellen
+      community.proxmox.proxmox:
+        api_host: "{{ pve_api_host }}"
+        api_user: "{{ pve_api_user }}"
+        api_password: "{{ pve_api_password }}"
+        validate_certs: "{{ pve_validate_certs | default(false) }}"
+
+        node: "{{ pve_node }}"
+        vmid: "{{ lxc_vmid }}"
+        hostname: "{{ lxc_hostname }}"
+
+        ostemplate: "{{ lxc_template }}"
+        disk: "{{ lxc_storage }}:{{ lxc_rootfs_size }}"
+
+        cores: "{{ lxc_cores }}"
+        memory: "{{ lxc_memory }}"
+        swap: "{{ lxc_swap }}"
+
+        password: "{{ lxc_root_password }}"
+        pubkey: "{{ lxc_ssh_public_key }}"
+
+        unprivileged: "{{ lxc_unprivileged }}"
+        onboot: "{{ lxc_onboot }}"
+        cmode: console
+
+        features: "{{ lxc_features | default([]) }}"
+
+        startup:
+          - "order={{ lxc_start_order | default(50) }}"
+          - "up={{ lxc_start_delay | default(30) }}"
+          - "down={{ lxc_shutdown_delay | default(60) }}"
+
+        netif:
+          net0: "name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_ip }},ip6={{ lxc_ip6 }},firewall={{ lxc_firewall | default(1) }}"
+
+        state: present
+        # Creation only: preserve existing net0/MAC and other guest settings.
+        # community.proxmox >= 1.0 defaults update to true.
+        update: false
+        timeout: 300
+
+      register: lxc_create_result
+      no_log: true
+
+    ###########################################################################
+    # Result
+    ###########################################################################
+
+    - name: Erstellung zusammenfassen
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "Bergen Platform LXC erfolgreich angelegt"
+          - "============================================================"
+          - "Hostname : {{ lxc_hostname }}"
+          - "VMID     : {{ lxc_vmid }}"
+          - "Node     : {{ pve_node }}"
+          - "Template : {{ lxc_template }}"
+          - "Storage  : {{ lxc_storage }}:{{ lxc_rootfs_size }}"
+          - "CPU      : {{ lxc_cores }}"
+          - "RAM      : {{ lxc_memory }} MiB"
+          - "Swap     : {{ lxc_swap }} MiB"
+          - "Bridge   : {{ lxc_bridge }}"
+          - "IP-Modus : {{ lxc_ip }}"
+          - "Status   : angelegt"
+          - ""
+          - "Nächster Schritt:"
+          - >-
+            ansible-playbook ansible/playbooks/discover-lxc.yml
+            -e @ansible/group_vars/all/{{ lxc_hostname }}.yml
+            --ask-vault-pass
+          - "============================================================"

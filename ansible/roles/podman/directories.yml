@@ -1,0 +1,9 @@
+---
+- name: Create Podman storage directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ podman_storage_owner }}"
+    group: "{{ podman_storage_group }}"
+    mode: "{{ podman_storage_mode }}"
+  loop: "{{ [podman_storage_root] + podman_storage_directories }}"

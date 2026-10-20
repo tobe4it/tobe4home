@@ -1,0 +1,65 @@
+lxc_vmid: "{{ site_ai_backend_vmid | mandatory }}"
+lxc_hostname: "{{ site_ai_backend_hostname | mandatory }}"
+
+lxc_template: local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst
+
+lxc_storage: "{{ site_lxc_storage | mandatory }}"
+lxc_rootfs_size: 100
+
+lxc_memory: 16384
+lxc_swap: 2048
+lxc_cores: 8
+
+lxc_bridge: "{{ site_ai_bridge | mandatory }}"
+
+lxc_ip: dhcp
+lxc_ip6: dhcp
+
+lxc_unprivileged: true
+lxc_onboot: true
+
+lxc_firewall: 1
+
+lxc_ssh_public_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+lxc_root_password: "{{ vault_lxc_root_password }}"
+
+# Set pve_node and pve_inventory_host in site.local.yml.
+
+lxc_gpu:
+  enabled: true
+
+  host_path: /dev/dri
+  container_path: /dev/dri
+
+  video_host_gid: 44
+  render_host_gid: 993
+
+  video_container_gid: 44
+  render_container_gid: 992
+
+ollama_enable_vulkan: true
+ollama_enable_igpu: true
+
+###############################################################################
+# LDAP
+###############################################################################
+
+ldap_enabled: true
+
+ldap_server_label: "Bergen OpenLDAP"
+ldap_host: "{{ site_ldap_host | mandatory }}"
+ldap_port: 389
+
+ldap_use_tls: false
+ldap_validate_cert: false
+
+ldap_base_dn: "{{ site_ldap_base_dn | mandatory }}"
+ldap_search_base: "{{ site_ldap_search_base | mandatory }}"
+
+ldap_username_attribute: uid
+ldap_mail_attribute: mail
+ldap_search_filter: "(objectClass=inetOrgPerson)"
+
+# Synology erlaubt derzeit anonyme LDAP-Suchen.
+ldap_bind_dn: ""
+ldap_bind_password: ""

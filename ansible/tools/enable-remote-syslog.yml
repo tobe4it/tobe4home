@@ -1,0 +1,23 @@
+---
+- name: Bergen Platform | Enable remote syslog on ad-hoc Linux host
+  hosts: all
+  gather_facts: true
+  become: true
+
+  # Preserve the original ad-hoc variable names as compatibility aliases while
+  # delegating all configuration and validation to the reusable role.
+  vars:
+    remote_syslog_server: "{{ syslog_server | mandatory }}"
+    remote_syslog_port: "{{ syslog_port | default(514) }}"
+    remote_syslog_protocol: "{{ syslog_protocol | default('tcp') }}"
+    remote_syslog_config_path: >-
+      {{ syslog_config_path
+         | default('/etc/rsyslog.d/90-bergen-remote.conf') }}
+
+  roles:
+    - role: remote_syslog
+
+  post_tasks:
+    - name: Explain ad-hoc inventory scope
+      ansible.builtin.debug:
+        msg: "This host was not added to Bergen Platform inventory."

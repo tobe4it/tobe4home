@@ -1,0 +1,44 @@
+# tobe4home: site-local data, keys, secrets and backups must stay outside Git.
+.venv/
+*.retry
+*.pyc
+*.swp
+*.swo
+.DS_Store
+__pycache__/
+.pytest_cache/
+**/.env
+**/.env.*
+**/*.local.yml
+**/*.local.yaml
+**/*.vault.yml
+**/*.vault.yaml
+**/inventory.local.yml
+**/id_rsa
+**/id_ed25519
+**/*.key
+**/*.pem
+**/.ssh/
+
+# Known site-only inventory, group variables and local work files.
+ansible/group_vars/all/vault.yml
+ansible/group_vars/all/bergen-mail.yml
+ansible/group_vars/all/bergen-daytrade.yml
+ansible/group_vars/all/bergen-evcc.yml
+ansible/group_vars/all/bergen-proxy.yml
+ansible/group_vars/all/site.local.yml
+ansible/group_vars/all/site.local.yml~
+ansible/inventory.local.yml
+ansible/inventory.local.yml~
+ansible/inventory.local.yml.*~
+ansible/reports/
+
+# Site-local TLS, OIDC and DNS-01 instance data (explicit for audit tests).
+ansible/vars/mail-tls.local.yml
+ansible/vars/selfhost-acme.local.vault.yml
+ansible/vars/selfhost-acme.local.yml
+ansible/vars/selfhost-acme.vault.yml
+ansible/vars/selfhost-acme-*.local.yml
+ansible/vars/selfhost-acme-*.vault.yml
+ansible/vars/ai-oidc.local.yml
+ansible/vars/ai-oidc.vault.yml

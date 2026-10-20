@@ -1,0 +1,160 @@
+---
+- name: Validate provider, SMTP and Vault configuration
+  ansible.builtin.assert:
+    that:
+      - daytrading_data_provider in daytrading_supported_providers
+      - daytrading_candidate_mode in ['gap', 'watchlist']
+      - not (daytrading_data_provider == 'replay' and daytrading_timer_enabled | bool)
+      - daytrading_smtp_password is not defined
+      - daytrading_smtp_host | string | length > 0
+      - daytrading_smtp_username | string | length > 0
+      - daytrading_email_from | string | length > 0
+      - daytrading_email_to | string | length > 0
+      - (vault_daytrading_smtp_password | default('') | string | length) > 0
+      - daytrading_data_provider != 'alpaca' or (vault_daytrading_alpaca_api_key_id | default('') | string | length) > 0
+      - daytrading_data_provider != 'alpaca' or (vault_daytrading_alpaca_api_secret_key | default('') | string | length) > 0
+      - daytrading_data_provider != 'ibkr' or daytrading_ibkr_instruments | length > 0
+    fail_msg: >-
+      Configure a supported provider and SMTP in the ignored bergen-daytrade.yml.
+      Store SMTP and Alpaca credentials only in ansible/group_vars/all/vault.yml.
+      IBKR requires at least one locally configured symbol/conid mapping. The
+      replay provider must be invoked manually and cannot enable the timer.
+    quiet: true
+
+- name: Install collector runtime packages
+  ansible.builtin.package:
+    name:
+      - python3
+      - ca-certificates
+      - tzdata
+    state: present
+
+- name: Create collector group
+  ansible.builtin.group:
+    name: "{{ daytrading_collector_group }}"
+    system: true
+    state: present
+
+- name: Create collector user
+  ansible.builtin.user:
+    name: "{{ daytrading_collector_user }}"
+    group: "{{ daytrading_collector_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    state: present
+
+- name: Create collector directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ daytrading_collector_base_dir }}"
+      owner: root
+      group: "{{ daytrading_collector_group }}"
+      mode: "0755"
+    - path: "{{ daytrading_collector_state_dir }}"
+      owner: "{{ daytrading_collector_user }}"
+      group: "{{ daytrading_collector_group }}"
+      mode: "0750"
+
+- name: Install provider-neutral collector
+  ansible.builtin.template:
+    src: daytrading-collector.py.j2
+    dest: "{{ daytrading_collector_base_dir }}/collector.py"
+    owner: root
+    group: "{{ daytrading_collector_group }}"
+    mode: "0755"
+  notify: Restart daytrading timer
+
+- name: Install collector configuration without credentials
+  ansible.builtin.template:
+    src: daytrading-collector.json.j2
+    dest: "{{ daytrading_collector_config }}"
+    owner: root
+    group: "{{ daytrading_collector_group }}"
+    mode: "0640"
+  notify: Restart daytrading timer
+
+- name: Install Vault-managed SMTP password
+  ansible.builtin.copy:
+    dest: "{{ daytrading_smtp_password_file }}"
+    content: "{{ vault_daytrading_smtp_password }}\n"
+    owner: "{{ daytrading_collector_user }}"
+    group: "{{ daytrading_collector_group }}"
+    mode: "0400"
+  no_log: true
+
+- name: Install Vault-managed Alpaca credentials
+  ansible.builtin.copy:
+    dest: "{{ daytrading_provider_credentials_file }}"
+    content: >-
+      {{ {'alpaca': {
+        'api_key_id': vault_daytrading_alpaca_api_key_id,
+        'api_secret_key': vault_daytrading_alpaca_api_secret_key
+      }} | to_nice_json }}
+    owner: "{{ daytrading_collector_user }}"
+    group: "{{ daytrading_collector_group }}"
+    mode: "0400"
+  when: daytrading_data_provider == 'alpaca'
+  no_log: true
+
+- name: Remove unused provider credential file
+  ansible.builtin.file:
+    path: "{{ daytrading_provider_credentials_file }}"
+    state: absent
+  when: daytrading_data_provider != 'alpaca'
+
+- name: Install synthetic replay fixture
+  ansible.builtin.template:
+    src: replay-example.json.j2
+    dest: "{{ daytrading_replay_file }}"
+    owner: root
+    group: "{{ daytrading_collector_group }}"
+    mode: "0640"
+  when:
+    - daytrading_data_provider == 'replay'
+    - daytrading_replay_source_file | length == 0
+
+- name: Install local replay fixture
+  ansible.builtin.copy:
+    src: "{{ daytrading_replay_source_file }}"
+    dest: "{{ daytrading_replay_file }}"
+    owner: root
+    group: "{{ daytrading_collector_group }}"
+    mode: "0640"
+  when:
+    - daytrading_data_provider == 'replay'
+    - daytrading_replay_source_file | length > 0
+
+- name: Install collector systemd service
+  ansible.builtin.template:
+    src: bergen-daytrading-collector.service.j2
+    dest: /etc/systemd/system/bergen-daytrading-collector.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart daytrading timer
+
+- name: Install collector systemd timer
+  ansible.builtin.template:
+    src: bergen-daytrading-collector.timer.j2
+    dest: /etc/systemd/system/bergen-daytrading-collector.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart daytrading timer
+
+- name: Apply collector timer state
+  ansible.builtin.systemd:
+    name: bergen-daytrading-collector.timer
+    enabled: "{{ daytrading_timer_enabled | bool }}"
+    state: "{{ 'started' if daytrading_timer_enabled | bool else 'stopped' }}"
+    daemon_reload: true

@@ -1,0 +1,228 @@
+---
+###############################################################################
+#
+# Bergen Platform
+#
+# Playbook:
+#   update-inventory.yml
+#
+# Purpose:
+#   Persist the discovered LXC IPv4 address in a static Ansible inventory.
+#
+# Modes:
+#   - Existing-host mode: replace ansible_host for an existing host.
+#   - Managed-group mode: create or merge a host below lxc_inventory_group.
+#
+###############################################################################
+
+- name: Persist discovered LXC inventory data
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    inventory_file_path: >-
+      {{ lxc_inventory_file | default(playbook_dir ~ '/../inventory.yml') }}
+    discovered_inventory_ipv4: "{{ hostvars[lxc_hostname].ansible_host }}"
+
+  tasks:
+    - name: Erforderliche Inventory-Variablen prüfen
+      ansible.builtin.assert:
+        that:
+          - lxc_hostname is defined
+          - lxc_hostname | string | length > 0
+          - hostvars[lxc_hostname] is defined
+          - hostvars[lxc_hostname].ansible_host is defined
+          - hostvars[lxc_hostname].ansible_host | string | length > 0
+          - >-
+            lxc_inventory_group is not defined
+            or lxc_inventory_group | string | length > 0
+
+        fail_msg: >-
+          Für {{ lxc_hostname | default('den LXC') }} fehlen gültige
+          Laufzeit- oder Inventory-Daten.
+
+        success_msg: >-
+          Die Laufzeitdaten für {{ lxc_hostname }} sind vorhanden.
+
+    - name: Inventory-Datei prüfen
+      ansible.builtin.stat:
+        path: "{{ inventory_file_path }}"
+      register: inventory_file
+
+    - name: Fehlende verwaltete Inventory-Datei initialisieren
+      ansible.builtin.copy:
+        dest: "{{ inventory_file_path }}"
+        content: |
+          ---
+          all:
+            children: {}
+        mode: "0600"
+        force: false
+      when:
+        - not inventory_file.stat.exists
+        - lxc_inventory_group is defined
+
+    - name: Inventory-Datei nach Initialisierung erneut prüfen
+      ansible.builtin.stat:
+        path: "{{ inventory_file_path }}"
+      register: inventory_file_ready
+
+    - name: Vorhandene Inventory-Datei voraussetzen
+      ansible.builtin.assert:
+        that:
+          - inventory_file_ready.stat.exists
+          - inventory_file_ready.stat.isreg
+
+        fail_msg: >-
+          Die Inventory-Datei {{ inventory_file_path }} wurde nicht gefunden.
+          Setze lxc_inventory_group, wenn eine fehlende lokale Inventory-Datei
+          automatisch angelegt werden soll.
+
+    ###########################################################################
+    # Managed-group mode
+    ###########################################################################
+
+    - name: Verwaltete Inventory-Datei einlesen
+      ansible.builtin.slurp:
+        path: "{{ inventory_file_path }}"
+      register: inventory_file_content
+      when: lxc_inventory_group is defined
+
+    - name: Vorhandene Inventory-Struktur dekodieren
+      ansible.builtin.set_fact:
+        inventory_current_data: >-
+          {{
+            (inventory_file_content.content | b64decode | from_yaml)
+            | default({'all': {'children': {}}}, true)
+          }}
+      when: lxc_inventory_group is defined
+
+    - name: Vorhandene Inventory-Struktur validieren
+      ansible.builtin.assert:
+        that:
+          - inventory_current_data is mapping
+          - inventory_current_data.all is defined
+          - inventory_current_data.all is mapping
+          - inventory_current_data.all.children is defined
+          - inventory_current_data.all.children is mapping
+
+        fail_msg: >-
+          {{ inventory_file_path }} besitzt nicht die erwartete Struktur
+          all.children und wird nicht automatisch überschrieben.
+      when: lxc_inventory_group is defined
+
+    - name: Verwalteten Hosteintrag aufbauen
+      ansible.builtin.set_fact:
+        inventory_update_data: >-
+          {{ {'all': {'children': {lxc_inventory_group: {'hosts': {
+               lxc_hostname: {
+                 'ansible_host': discovered_inventory_ipv4,
+                 'ansible_user': lxc_ansible_user | default('root'),
+                 'ansible_port': lxc_ansible_port | default(22),
+                 'ansible_python_interpreter': '/usr/bin/python3'
+               }
+             }}}}} }}
+      when: lxc_inventory_group is defined
+
+    - name: Identify the legacy literal-placeholder entry
+      ansible.builtin.set_fact:
+        inventory_legacy_group_key: "{{ '{' ~ '{ lxc_inventory_group }' ~ '}' }}"
+        inventory_legacy_host_key: "{{ '{' ~ '{ lxc_hostname }' ~ '}' }}"
+      when: lxc_inventory_group is defined
+
+    - name: Refuse ambiguous legacy placeholder repair
+      ansible.builtin.assert:
+        that:
+          - inventory_current_data.all.children[inventory_legacy_group_key] is mapping
+          - inventory_current_data.all.children[inventory_legacy_group_key].keys() | list == ['hosts']
+          - inventory_current_data.all.children[inventory_legacy_group_key].hosts is mapping
+          - inventory_current_data.all.children[inventory_legacy_group_key].hosts.keys() | list == [inventory_legacy_host_key]
+          - inventory_current_data.all.children[inventory_legacy_group_key].hosts[inventory_legacy_host_key] is mapping
+          - inventory_current_data.all.children[inventory_legacy_group_key].hosts[inventory_legacy_host_key].ansible_host == discovered_inventory_ipv4
+        fail_msg: >-
+          Literal placeholder entry is ambiguous or belongs to another address.
+          No existing inventory data will be discarded; review it explicitly.
+      when:
+        - lxc_inventory_group is defined
+        - inventory_legacy_group_key in inventory_current_data.all.children
+
+    - name: Preserve legacy host settings under resolved names
+      ansible.builtin.set_fact:
+        inventory_update_data: >-
+          {{ {'all': {'children': {lxc_inventory_group: {'hosts': {
+               lxc_hostname: inventory_current_data.all.children[inventory_legacy_group_key].hosts[inventory_legacy_host_key]
+                 | combine(inventory_update_data.all.children[lxc_inventory_group].hosts[lxc_hostname])
+             }}}}} }}
+      when:
+        - lxc_inventory_group is defined
+        - inventory_legacy_group_key in inventory_current_data.all.children
+
+    - name: Remove only the verified legacy group while preserving other inventory data
+      ansible.builtin.set_fact:
+        inventory_current_data: >-
+          {{ inventory_current_data | combine({'all': inventory_current_data.all | combine({
+               'children': inventory_current_data.all.children | dict2items
+                 | rejectattr('key', 'equalto', inventory_legacy_group_key) | list | items2dict
+             })}) }}
+      when:
+        - lxc_inventory_group is defined
+        - inventory_legacy_group_key in inventory_current_data.all.children
+
+    - name: Verwalteten Hosteintrag zusammenführen
+      ansible.builtin.set_fact:
+        inventory_merged_data: >-
+          {{
+            inventory_current_data
+            | combine(inventory_update_data, recursive=true)
+          }}
+      when: lxc_inventory_group is defined
+
+    - name: Verwalteten Hosteintrag persistent speichern
+      ansible.builtin.copy:
+        dest: "{{ inventory_file_path }}"
+        backup: true
+        content: >-
+          {{ inventory_merged_data | to_nice_yaml(indent=2, sort_keys=false) }}
+      register: inventory_structured_update
+      when: lxc_inventory_group is defined
+
+    ###########################################################################
+    # Existing-host mode
+    ###########################################################################
+
+    - name: IPv4-Adresse des vorhandenen Hosts aktualisieren
+      ansible.builtin.replace:
+        path: "{{ inventory_file_path }}"
+        regexp: >-
+          (?ms)^(\s+{{ lxc_hostname | regex_escape }}:\s*\n
+          (?:(?!^\s{4}\S).)*?
+          \s+ansible_host:\s*)[^\n]+
+        replace: '\g<1>{{ discovered_inventory_ipv4 }}'
+      register: inventory_existing_host_update
+      when: lxc_inventory_group is not defined
+
+    - name: Inventory-Aktualisierung anzeigen
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "Bergen Platform Inventory aktualisiert"
+          - "============================================================"
+          - "Hostname : {{ lxc_hostname }}"
+          - "IPv4     : {{ discovered_inventory_ipv4 }}"
+          - "Datei    : {{ inventory_file_path }}"
+          - >-
+            Gruppe   :
+            {{ lxc_inventory_group | default('vorhandener Hosteintrag') }}
+          - >-
+            Status   :
+            {{
+              'geändert'
+              if
+                (
+                  inventory_structured_update.changed | default(false)
+                  or
+                  inventory_existing_host_update.changed | default(false)
+                )
+              else 'unverändert'
+            }}
+          - "============================================================"
