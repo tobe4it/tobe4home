@@ -24,7 +24,9 @@ Do not deploy example addresses or placeholder credentials to production. Review
 
 ## Status
 
-This repository is being populated from reviewed, completed infrastructure components. Until component migration and validation are complete, treat the published material as a development release rather than a turnkey installation.
+The initial import of reviewed infrastructure components is complete. The independent public Git history starts with this project, not with earlier environment-specific development commits.
+
+The automated validation workflow currently checks Python contracts and bilingual handbook sources. This is an **infrastructure-as-code development baseline**, not a turnkey installation: integration tests against independent live environments, a full manual security review, and a stable release remain outstanding.
 
 ## Documentation
 
