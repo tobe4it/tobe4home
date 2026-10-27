@@ -6,6 +6,9 @@ No credentials collected, no privileged operations and NO installation actions.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import collections
 import html
 import ipaddress
 import json
@@ -13,7 +16,10 @@ import os
 from pathlib import Path
 import re
 import secrets
+import ssl
 import tempfile
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
@@ -137,8 +143,26 @@ This wizard cannot create users, alter Proxmox, or deploy services.</small></p>
 Ansible implementations are required before write-capable deployments.</p>
 </body></html>"""
 
-def make_handler(state_path: Path):
+def make_handler(state_path: Path, setup_code: str):
+    """All endpoints require TLS-protected HTTP Basic authentication."""
+    if len(setup_code) < 24:
+        raise ValueError("Setup code is missing or too short")
     csrf = secrets.token_urlsafe(32)
+    attempts: dict[str, collections.deque[float]] = {}
+    attempt_lock = threading.Lock()
+    failure_limit = 8
+    failure_window_seconds = 300
+
+    def authenticate(raw_header: str | None) -> bool:
+        if not raw_header or not raw_header.startswith("Basic "):
+            return False
+        try:
+            raw = base64.b64decode(raw_header[6:].strip(), validate=True)
+            username, password = raw.decode("utf-8").split(":", 1)
+        except (ValueError, UnicodeError, binascii.Error):
+            return False
+        return secrets.compare_digest(username, "setup") and secrets.compare_digest(password, setup_code)
+
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, code: int, body: str, content_type: str = "text/html; charset=utf-8") -> None:
@@ -153,7 +177,36 @@ def make_handler(state_path: Path):
             self.end_headers()
             self.wfile.write(body_bytes)
 
+        def _require_auth(self) -> bool:
+            ip = self.client_address[0]
+            now = time.monotonic()
+            with attempt_lock:
+                recent = attempts.setdefault(ip, collections.deque())
+                while recent and now - recent[0] > failure_window_seconds:
+                    recent.popleft()
+                if len(recent) >= failure_limit:
+                    self._reply(429, "Too many failed login attempts. Retry later.",
+                                "text/plain; charset=utf-8")
+                    return False
+            if authenticate(self.headers.get("Authorization")):
+                with attempt_lock:
+                    attempts.pop(ip, None)
+                return True
+            with attempt_lock:
+                attempts.setdefault(ip, collections.deque()).append(now)
+            response = b"Setup login required"
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="tobe4home setup", charset="UTF-8"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+            return False
+
         def do_GET(self) -> None:
+            if not self._require_auth():
+                return
             if self.path == "/health":
                 self._reply(200, "ok", "text/plain; charset=utf-8")
             elif self.path in ("/", "/saved"):
@@ -162,6 +215,8 @@ def make_handler(state_path: Path):
                 self._reply(404, "Not found", "text/plain; charset=utf-8")
 
         def do_POST(self) -> None:
+            if not self._require_auth():
+                return
             if self.path != "/save":
                 return self._reply(404, "Not found", "text/plain; charset=utf-8")
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -187,13 +242,22 @@ def make_handler(state_path: Path):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--listen", default="127.0.0.1")
+    parser.add_argument("--listen", default="0.0.0.0")
+    parser.add_argument("--tls-cert", type=Path, required=True)
+    parser.add_argument("--tls-key", type=Path, required=True)
+    parser.add_argument("--setup-code-file", type=Path, required=True)
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE)
     args = parser.parse_args()
-    if args.listen not in ("127.0.0.1", "::1"):
-        parser.error("For stage-0 the wizard may listen on loopback only.")
-    server = ThreadingHTTPServer((args.listen, args.port), make_handler(args.state_file))
+    if args.listen != "0.0.0.0":
+        parser.error("Direct internal HTTPS mode listens on the guest's IPv4 interfaces.")
+    setup_code = args.setup_code_file.read_text(encoding="ascii").strip()
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.minimum_version = ssl.TLSVersion.TLSv1_2
+    tls.load_cert_chain(str(args.tls_cert), str(args.tls_key))
+    server = ThreadingHTTPServer((args.listen, args.port),
+                                 make_handler(args.state_file, setup_code))
+    server.socket = tls.wrap_socket(server.socket, server_side=True)
     server.serve_forever()
 
 if __name__ == "__main__":
