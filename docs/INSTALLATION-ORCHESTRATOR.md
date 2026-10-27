@@ -177,6 +177,52 @@ Restbestände, aktives RootFS-Storage, Host-Bridge sowie unprivilegierte
 UID/GID-Zuordnung. Der Operator entscheidet ausdrücklich über
 `--apply` und die exakte Eingabe `DEPLOY 1001`.
 
+### Fehlgeschlagener Paketdownload nach erfolgreichem CT-Create
+
+Der erste reale Stage-1-Versuch auf dem Test-Proxmox zeigte:
+
+- `pct create 1001` und `pct start 1001`: **erfolgreich**.
+- `dnf install`: **abgebrochen**, weil der neue Gast
+  `mirrors.rockylinux.org` nicht auflösen konnte.
+- VMID 1001 bleibt vorhanden. **Niemals** den Create-Installer mit
+  `--apply` erneut starten oder den CT aus diesem Grund löschen.
+
+Proxmox kann bei LXC den Host-DNS-Resolver übernehmen, selbst wenn die
+Gast-IP per DHCP bezogen wird. Das Setup hat bereits einen bearbeitbaren,
+nach Herkunft gekennzeichneten DNS-Resolver gespeichert. Der
+Create-Installer übergibt diesen jetzt explizit als `--nameserver`.
+Er prüft die Namensauflösung **vor** dem Paketdownload.
+
+Für den bereits existierenden CT bietet
+`bootstrap/resume-ansible-controller.sh` einen strikt begrenzten
+Wiederaufnahmepfad. Ohne `--apply` liest er nur die Konfiguration,
+den gespeicherten DNS aus CT 1000, die effektive `resolv.conf`,
+Gast-Routen und eine DNS-Testabfrage. Wenn die DNS-Auflösung fehlschlägt,
+kann der Betreiber **nach separater Freigabe** ausschließlich CT 1001
+auf den ausgewählten Resolver umstellen, den CT gezielt neu starten
+und die fehlende Paketinstallation nach erfolgreichem DNS-Test nachholen.
+Es erfolgen keine Änderungen an CT 1000, anderen Gästen, am Proxmox-Host-
+DNS, an Switches oder Firewall-Regeln. Ein DNS-Override ist per
+`--nameserver=<geprüfte-IP>` möglich.
+
+```bash
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo bash /root/tobe4home-bootstrap/bootstrap/resume-ansible-controller.sh \
+  --bridge=vmbr3
+# Erst nach Kontrolle des read-only-Plans:
+sudo bash /root/tobe4home-bootstrap/bootstrap/resume-ansible-controller.sh \
+  --bridge=vmbr3 --apply
+# Freigabe: RESUME 1001
+```
+
+Die tatsächliche lokale Bridge kann abweichen; sie muss mit der
+vorhandenen CT-Konfiguration übereinstimmen. Die Stage-0-DNS-Einstellung
+muss zuvor als **tatsächlich erreichbarer Resolver** validiert werden.
+Falls DNS nach der gezielten Umstellung weiter fehlschlägt, stoppt die
+Wiederaufnahme ohne DNF-Installation und bewahrt den Zustand zur Diagnose.
+Ungeprüft Nesting oder privilegierte LXC-Rechte zu aktivieren ist kein
+DNS-Fix. Die Warnung zu systemd 257 ist separat zu bewerten.
+
 ### Ausführung und Abnahme
 
 ```bash
