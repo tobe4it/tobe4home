@@ -244,6 +244,79 @@ inspection rather than destroying it. Use `pct exec <VMID> -- journalctl -u
 tobe4home-wizard` and `pct config <VMID>` for diagnosis. Never automatically
 delete a partially installed CT without independent review.
 
+## First real Proxmox acceptance: 2026-10-27
+
+On a Proxmox VE 9.2 system, the **first real installation attempt** passed
+read-only checks, downloaded `rockylinux-10-default_20251001_amd64.tar.xz`
+from the official Proxmox catalog, and verified its checksum. It failed at
+the next operation, `pct create --unprivileged 1 --rootfs local-zfs:8`, with:
+
+```text
+tar: /var/lib/lxc/1000/rootfs: Cannot open: Permission denied
+unable to create CT 1000 - command 'lxc-usernsexec ... tar ...' failed
+```
+
+This is a **rootfs access / unprivileged-idmapping / storage property**
+investigation, not proof that Rocky Linux 10 cannot run. Similar errors occur
+with other OS templates under Proxmox. Rootfs allocation and extraction
+were never tested by the earlier read-only preflight.
+
+**Operator safety:** do not rerun the deployment, use a privileged container,
+alter ZFS ACL properties, run `chmod`/`chown` on shared host directories,
+or destroy leftover CT/dataset files as a workaround. Collect read-only
+diagnostics first:
+
+```bash
+sudo pct status 1000 || true
+sudo pct config 1000 || true
+sudo pvesm status --content rootdir
+sudo namei -l /var/lib/lxc/1000/rootfs
+sudo ls -ldn /var/lib/lxc /var/lib/lxc/1000 /var/lib/lxc/1000/rootfs 2>&1
+sudo zfs list -o name,mountpoint,acltype -t filesystem |
+  grep -E '(^NAME|1000|rpool/data)'
+sudo zfs get -r -o name,property,value acltype,aclmode rpool/data
+sudo ls -l /etc/subuid /etc/subgid
+```
+
+Replace `rpool/data` with the actual configured zfspool pool if different;
+`grep` is advisory, not a storage dataset selector. Inspection commands may
+report expected `not found` errors if the failed `pct create` cleaned up
+the partial guest. Never interpret absent paths as successful creation.
+
+The revised `bootstrap/host_preflight.py` now checks glibc CPU
+`x86-64-v3` eligibility, active LXC rootdir-capable storage, a non-destructive
+Proxmox uid/gid usernamespace smoke test, ZFS properties (where discoverable)
+and stale CT paths **before template download or create**. A read-only test
+cannot conclusively prove a future ZFS subvolume's access or guest DHCP.
+Therefore a live, isolated test and independent authorization are still
+required. Failed creation must preserve diagnostics and not trigger automatic
+cleanup of resources it did not create.
+
+## Verified WebApp link after success
+
+After `pct create`, guest provisioning, the systemd service check, and an
+actual HTTP health request to `127.0.0.1:8765/health` **inside the guest**,
+the installer prints the confirmed guest IPv4 and the browser address:
+
+```text
+STAGE-0 READY: CT 1000
+Guest IPv4: <verified-guest-ip>
+WebApp HTTP health: PASS
+
+WEBAPP URL (on your workstation AFTER SSH tunnel):
+  http://127.0.0.1:8765/
+
+ssh -N -J <proxmox-login>@<proxmox-address> \
+  -L 8765:127.0.0.1:8765 tobe4home@<verified-guest-ip>
+```
+
+The whiptail installer additionally shows a final success dialog with the
+URL and connection instructions. This is **not** a routable LAN web URL:
+the first-stage wizard is intentionally bound to guest loopback and has
+not yet implemented a secure LAN pairing/login mechanism. The browser link
+is valid only after the SSH tunnel is established. If any health/access
+check fails, the installer must not claim `STAGE-0 READY`.
+
 ## Access the initial web wizard
 
 Find the guest address using the Proxmox UI or
