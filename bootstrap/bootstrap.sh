@@ -188,7 +188,7 @@ echo "Created CT $VMID. Failures after this point leave it intact for diagnosis.
 pct start "$VMID"
 
 # Installing only the small, necessary runtime; no Podman or Docker in stage-0.
-pct exec "$VMID" -- dnf -y install python3 openssh-server shadow-utils
+pct exec "$VMID" -- dnf -y install python3 openssh-server shadow-utils openssl iproute
 pct exec "$VMID" -- /usr/sbin/useradd --create-home --shell /bin/bash tobe4home
 pct exec "$VMID" -- install -d -m 0700 -o tobe4home -g tobe4home /home/tobe4home/.ssh
 pct push "$VMID" "$SSH_KEY" /home/tobe4home/.ssh/authorized_keys --user tobe4home --group tobe4home --perms 0600
@@ -200,46 +200,100 @@ printf 'TOBE4HOME_CONTAINER_PREFIX=%s\n' "$CONTAINER_PREFIX" |
 pct exec "$VMID" -- chmod 0644 /etc/tobe4home/bootstrap.env
 pct exec "$VMID" -- install -d -m 0755 /opt/tobe4home
 pct exec "$VMID" -- install -d -m 0700 -o tobe4home -g tobe4home /var/lib/tobe4home
+
+# This CT has only one NIC in the operator-selected network. Obtain its real
+# DHCP address first to create a certificate with an IP SubjectAltName.
+GUEST_IP=""
+for _ in $(seq 1 25); do
+  GUEST_IP="$(pct exec "$VMID" -- ip -4 -o addr show dev eth0 2>/dev/null |
+    awk '{split($4, address, "/"); if (address[1] != "") {print address[1]; exit}}')"
+  [[ -z "$GUEST_IP" ]] || break
+  sleep 2
+done
+[[ -n "$GUEST_IP" ]] ||
+  die "Guest has no IPv4 address on selected network; inspect DHCP and vmbr"
+
+# Generate a one-installation bootstrap code on the host. Never put it in Git,
+# URLs, process argv, systemd environment files or a downloaded script.
+SETUP_CODE="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+AUTH_TEMP="$(mktemp /run/tobe4home-setup-auth.XXXXXXXX)" ||
+  die "Cannot create private temporary setup code"
+chmod 0600 "$AUTH_TEMP"
+trap 'rm -f -- "$AUTH_TEMP"' EXIT
+printf '%s\n' "$SETUP_CODE" > "$AUTH_TEMP"
+pct push "$VMID" "$AUTH_TEMP" /var/lib/tobe4home/setup.code \
+  --user tobe4home --group tobe4home --perms 0600
+
+# Create a temporary self-signed certificate with the actual IPv4 SAN.
+# The fingerprint is shown to the operator for manual verification.
+pct exec "$VMID" -- openssl req -x509 -newkey rsa:3072 -sha256 \
+  -days 30 -noenc -keyout /var/lib/tobe4home/tls.key \
+  -out /var/lib/tobe4home/tls.crt \
+  -subj "/CN=$HOSTNAME" -addext "subjectAltName=IP:$GUEST_IP" >/dev/null 2>&1 ||
+  die "Cannot generate HTTPS certificate in the new guest"
+pct exec "$VMID" -- chown tobe4home:tobe4home \
+  /var/lib/tobe4home/tls.key /var/lib/tobe4home/tls.crt
+pct exec "$VMID" -- chmod 0600 /var/lib/tobe4home/tls.key
+pct exec "$VMID" -- chmod 0644 /var/lib/tobe4home/tls.crt
+TLS_FINGERPRINT="$(pct exec "$VMID" -- openssl x509 \
+  -in /var/lib/tobe4home/tls.crt -noout -fingerprint -sha256)"
 pct push "$VMID" "$SCRIPT_DIR/wizard.py" /opt/tobe4home/wizard.py --perms 0644
 pct push "$VMID" "$SCRIPT_DIR/wizard.service" /etc/systemd/system/tobe4home-wizard.service --perms 0644
 pct exec "$VMID" -- install -d -m 0755 /etc/ssh/sshd_config.d
 pct push "$VMID" "$SCRIPT_DIR/sshd.conf" /etc/ssh/sshd_config.d/90-tobe4home.conf --perms 0644
 pct exec "$VMID" -- systemctl daemon-reload
+
+# Open the HTTPS port only in the newly provisioned guest if its firewall is
+# already active; never edit Proxmox or network-switch firewall policy here.
+if pct exec "$VMID" -- systemctl is-active --quiet firewalld; then
+  pct exec "$VMID" -- firewall-cmd --permanent --add-port="$PORT"/tcp ||
+    die "Guest firewalld port authorization failed"
+  pct exec "$VMID" -- firewall-cmd --reload ||
+    die "Guest firewalld reload failed"
+fi
 pct exec "$VMID" -- systemctl enable --now sshd tobe4home-wizard.service
 pct exec "$VMID" -- systemctl is-active --quiet tobe4home-wizard.service ||
   die "Wizard did not start; inspect journal with pct exec $VMID -- journalctl -u tobe4home-wizard"
 
-# An active systemd service alone is insufficient. Check guest-loopback HTTP.
+# Check actual TLS, authentication and a NIC IP, not only systemd active.
 pct exec "$VMID" -- python3 -c '
+import base64
+import ssl
+import sys
 import urllib.request
-with urllib.request.urlopen("http://127.0.0.1:8765/health", timeout=5) as response:
+from pathlib import Path
+ip = sys.argv[1]
+secret = Path("/var/lib/tobe4home/setup.code").read_text().strip()
+credentials = base64.b64encode(("setup:" + secret).encode()).decode()
+request = urllib.request.Request(
+    "https://" + ip + ":8765/health",
+    headers={"Authorization": "Basic " + credentials},
+)
+context = ssl.create_default_context()
+context.check_hostname = False
+context.verify_mode = ssl.CERT_NONE  # self-signed startup certificate, local probe only
+with urllib.request.urlopen(request, timeout=8, context=context) as response:
     assert response.status == 200 and response.read() == b"ok"
-' || die "WebApp health endpoint is unavailable; inspect guest service journal"
+' "$GUEST_IP" ||
+  die "Direct HTTPS health request to guest IPv4 failed; inspect guest firewall"
 
-GUEST_IP="$(pct exec "$VMID" -- ip -4 -o addr show dev eth0 2>/dev/null |
-  awk '{split($4, address, "/"); if (address[1] != "") {print address[1]; exit}}')"
-[[ -n "$GUEST_IP" ]] ||
-  die "WebApp healthy, but guest IPv4 address unavailable; inspect DHCP/routing"
-PVE_USER="${SUDO_USER:-root}"
-
-cat <<EOF
-========================================
-STAGE-0 READY: CT $VMID
-Guest: $HOSTNAME
-Guest IPv4: $GUEST_IP
-WebApp HTTP health: PASS
-========================================
-
-WEBAPP URL (on your workstation AFTER SSH tunnel):
-  http://127.0.0.1:$PORT/
-
-First establish an SSH tunnel from the workstation:
-  ssh -N -J $PVE_USER@<PROXMOX-ADDRESS> \
-    -L $PORT:127.0.0.1:$PORT tobe4home@$GUEST_IP
-
-The WebApp is NOT available directly at http://$GUEST_IP:$PORT/
-because it intentionally listens only on guest loopback.
-Use your workstation's browser after the SSH tunnel connects.
-
-The installer stores a private draft; it does not deploy other services.
-EOF
+echo
+echo "========================================"
+echo "STAGE-0 READY: CT $VMID"
+echo "Guest: $HOSTNAME"
+echo "Guest IPv4: $GUEST_IP"
+echo "HTTPS + login health: PASS (from within the guest)"
+echo "========================================"
+echo
+echo "WEBAPP URL (from selected internal network):"
+echo "  https://$GUEST_IP:$PORT/"
+echo
+echo "LOGIN USER: setup"
+echo "SETUP CODE: $SETUP_CODE"
+echo "$TLS_FINGERPRINT"
+echo
+echo "This first certificate is SELF-SIGNED and expires after 30 days."
+echo "Compare the fingerprint before trusting the browser certificate."
+echo "Connection from your workstation depends on VLAN routing and firewalls."
+echo "The setup code is persistent until changed; protect it accordingly."
+echo "No other platform services have been deployed."
