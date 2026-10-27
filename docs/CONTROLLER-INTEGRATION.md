@@ -31,6 +31,7 @@ angelegt, verändert oder gelöscht.
 
 | Pfad | Zweck | Schreiben auf Proxmox? |
 | --- | --- | --- |
+| `bootstrap/import_stage0_site.py` | read-only Übernahme whitelisted Standortfelder aus CT1000 für lokale Testpläne | Nein |
 | `bootstrap/pve_snapshot.py` | ausschließlich GET-Aufrufe über lokales `pvesh` für VMIDs, Bridge, Storage, Vorlage, freie Ressourcen | Nein |
 | `bootstrap/infra_planner.py` | deterministischer Bedarfs- und VMID-Planer, Kapazitäts-/Sicherheitsprüfungen und SHA-256 des Plans | Nein |
 | `bootstrap/infra_planner.py --tf` | OpenTofu-HCL für neue, zunächst gestoppte und gegen Löschen geschützte LXCs | Nein |
@@ -103,10 +104,31 @@ Credentials. Er ermittelt den Clusterbestand einschließlich der existierenden
 CTs 1000/1001, aktiven Bridges, Storage-Typen, Templates und die freie
 Hostkapazität. **Keine öffentlichen Commits echter Standortdaten.**
 
-Ein vollständiger standortspezifischer `--site`-Datensatz muss aus den
-gespeicherten Stage-0-Angaben und überprüften Proxmox-Werten erzeugt
-werden. Die private Datei mit dem ermittelten Inventar und den geprüften
-Service-Endpunkten ist lokal mit Mode 0600 aufzubewahren.
+Die relevanten bestehenden Stage-0-Vorgaben lassen sich ohne
+Schreibzugriffe und ohne Wiederholung der Benutzereingaben übernehmen:
+
+```bash
+sudo python3 /root/tobe4home-bootstrap/bootstrap/import_stage0_site.py \
+  --node venombox --bridge vmbr3 --storage local-zfs \
+  --template local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz \
+  > ~/tobe4home-planner-site.local.json
+```
+
+Der Import liest nur Präfix und DNS aus CT 1000, ergänzt die explizit
+geprüften Host-/Storage-/Bridge-Parameter und gibt ausschließlich
+diese Whitelist-Felder aus. **Kein Site-Secret, kein Passwort und keine
+LXC-Änderung.** Die tatsächliche DNS-Erreichbarkeit ist vor der späteren
+Provisionierung separat zu überprüfen. Neue Bestandsdaten werden nicht
+blind als freigegebene Schreibaufträge verwendet.
+
+Das echte Inventar plus die lokal gespeicherten Site-Daten können
+anschließend unter kontrollierter operatorseitiger Auswahl in die
+`--inventory`- und `--site`-Optionen der Planner-CLI eingesetzt
+werden. Erforderliche `existing_services`-Einträge müssen als
+**tatsächlich verifiziert** gekennzeichnet werden; bei unbekannter
+Endpoint-Konfiguration verweigert der Planer den Existing-Modus.
+Die privaten Dateien sind lokal mit Mode 0600 aufzubewahren und dürfen
+nicht ins öffentliche Git-Repository.
 
 ## 3. Realtest-Gates vor Installation von AnsibleForms
 
