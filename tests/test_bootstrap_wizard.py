@@ -50,7 +50,7 @@ class WizardTests(unittest.TestCase):
         page = wizard.render(GOOD, "token")
         self.assertIn('name="container_prefix"', page)
         self.assertIn('value="tobe4home"', page)
-        self.assertIn("VMIDs are independent", page)
+        self.assertIn("dieser Setup-Container wird nicht umbenannt", page)
 
     def test_output_escapes_rendered_input(self):
         payload = dict(GOOD, site_label='<script>alert(1)</script>')
@@ -63,6 +63,83 @@ class WizardTests(unittest.TestCase):
             path = Path(directory) / "site.local.json"
             path.write_text('{"site":{"site_label":"x"}}')
             self.assertEqual(wizard.load_plan(path), {})
+
+    def test_navigation_has_real_next_step_and_no_double_phase_numbering(self):
+        draft = dict(GOOD)
+        page = wizard.render(draft, "csrf")
+        self.assertIn('action="/save"', page)
+        self.assertIn('Weiter zur Bestandsaufnahme', page)
+        self.assertIn('href="/discovery"', page)
+        self.assertIn('href="/plan"', page)
+        self.assertNotIn('1. 00', page)
+        self.assertNotIn('SSH-only administration', page)
+
+    def test_plan_and_guest_discovery_escape_all_data(self):
+        facts = {"hostname": '<img src=x onerror=alert(1)>',
+                 "os": "Rocky Linux 10", "guest_ipv4": "192.0.2.100",
+                 "dns": "192.0.2.53", "dns_origin": "DHCP"}
+        result = wizard.render_discovery(dict(GOOD), facts)
+        self.assertIn("Bestandsaufnahme", result)
+        self.assertIn("192.0.2.100", result)
+        self.assertIn("&lt;img src=x", result)
+        self.assertNotIn("<img src=", result)
+        plan = wizard.render_plan(dict(GOOD))
+        self.assertIn("Gespeicherte Konfiguration", plan)
+        self.assertIn("Implementierung ausstehend", plan)
+        self.assertNotIn('action="/apply"', plan)
+        self.assertIn("keinen eingeschränkt berechtigten", plan)
+
+    def test_full_setup_navigation_requires_saved_plan(self):
+        import base64
+        import re
+        import threading
+        from http.server import ThreadingHTTPServer
+        from urllib.error import HTTPError
+        from urllib.parse import urlencode
+        from urllib.request import Request, urlopen
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp) / "site.local.json"
+            code = "test-key-that-is-at-least-32-chars"
+            handler = wizard.make_handler(state, code)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                token = base64.b64encode(("setup:" + code).encode()).decode()
+                auth = {"Authorization": "Basic " + token}
+                def fetch(path, payload=None):
+                    if payload is None:
+                        request = Request(base + path, headers=auth)
+                    else:
+                        request = Request(base + path,
+                                          data=urlencode(payload).encode(),
+                                          headers=auth)
+                    with urlopen(request, timeout=3) as response:
+                        return response.geturl(), response.read().decode()
+                address, starting = fetch("/discovery")
+                self.assertEqual(address, base + "/")
+                csrf = re.search(r'name="csrf" value="([^"]+)"', starting)
+                self.assertIsNotNone(csrf)
+                values = dict(GOOD, csrf=csrf.group(1))
+                address, discovered = fetch("/save", values)
+                self.assertEqual(address, base + "/discovery")
+                self.assertIn("Bestandsaufnahme", discovered)
+                self.assertTrue(state.exists())
+                self.assertIn("Weiter zum Installationsplan", discovered)
+                address, planned = fetch("/plan")
+                self.assertEqual(address, base + "/plan")
+                self.assertIn("Installationsreihenfolge", planned)
+                self.assertIn("Keine weitere Installation freigegeben", planned)
+                self.assertNotIn("/apply", planned)
+                request = Request(base + "/apply", data=b"", headers=auth)
+                with self.assertRaises(HTTPError) as attempted:
+                    urlopen(request, timeout=3)
+                self.assertEqual(attempted.exception.code, 404)
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join(timeout=3)
 
     def test_all_pages_require_setup_code(self):
         import base64
