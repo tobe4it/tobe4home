@@ -4,8 +4,7 @@
   type: ansible
   roles:
     - default
-  categories:
-    - tobe4home
+  # Uses the mandatory Default category; avoid overwriting local config.yaml.
   description: "Benötigte Infrastruktur-Gäste aus einem Inventar ableiten."
   help: |
     **Testformular ohne Proxmox-Schreibzugriff.**
