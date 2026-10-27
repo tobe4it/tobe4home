@@ -130,6 +130,33 @@ This selection is for access to the new setup LXC, **not** for obtaining or
 granting privileged access to Proxmox. The network still needs to allow
 SSH from the admin workstation or an explicitly permitted jump host.
 
+## DNS resolver suggestion in the live setup wizard
+
+The stage-0 web wizard now automatically proposes the DNS server of the new
+guest's selected network. It tries the running `eth0` DHCP option
+`domain_name_servers` via read-only NetworkManager `nmcli` first. If
+NetworkManager cannot expose a DHCP lease, it reads the actually configured
+nameservers in `/etc/resolv.conf`, excluding invalid and loopback stub
+addresses. The UI names the discovery source and keeps the field editable.
+
+**Important Proxmox behavior:** a Proxmox LXC may inherit host-defined DNS
+settings instead of DNS offered by DHCP even while `eth0` receives its IPv4
+address via DHCP. Therefore `/etc/resolv.conf` is **not** automatically
+labeled "from DHCP." If DHCP-provided and effective DNS differ, the wizard
+warns the administrator. No DNS server is changed by this read-only detection.
+
+For a previously installed CT, updating the web application requires an
+explicit reviewed push and service restart; simply updating the GitHub
+repository does not change running code. The state draft and setup code are
+preserved when only `/opt/tobe4home/wizard.py` is updated. When the new UI
+is opened, it proposes the current resolver only if no DNS value has already
+been saved in the draft.
+
+The installation's DNS base domain is independent of the resolver IP:
+the former is a name suffix for future services, while the latter is the
+DNS server to ask for those names. Saving a base domain in the draft does
+not itself create a DNS zone, delegation or A/AAAA records.
+
 ## Text-based interactive installer (Debian-style menus)
 
 The launcher automatically uses the system `whiptail` utility when available
