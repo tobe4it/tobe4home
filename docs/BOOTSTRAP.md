@@ -26,8 +26,11 @@ Prompts are requests to the engineering pipeline, **not executable installers**.
   no privileged mounts, no production credentials and no auto-start.
 - Guest SSH uses a dedicated non-root user and the supplied public key;
   password authentication and guest root SSH are disabled.
-- The wizard is reachable **only on 127.0.0.1 in the guest**. Administrators
-  must establish an SSH local tunnel through the Proxmox host.
+- The wizard is reachable directly over authenticated **HTTPS on the selected
+  internal LXC network**. Its URL is `https://<guest-IP>:8765/`. The installer
+  generates a temporary self-signed certificate with the actual guest-IP SAN
+  and a strong random setup code. Neither unauthenticated HTTP nor public
+  Internet exposure is part of stage 0.
 - The wizard saves only a local `site.local.json` (0600) containing non-secret
   preliminary answers, not installation approval. Its contents never go to Git.
 - LXC isolation does not guarantee the SELinux properties of a RHEL VM.
@@ -77,13 +80,18 @@ Selecting a VLAN-aware bridge offers an optional tag (1–4094); a
 non-VLAN-aware bridge is used untagged. The selection never changes physical
 switches, VLAN membership, firewall rules or network routes.
 
-**Current stage-0 browser access:** the guest web app listens on its own
-`127.0.0.1:8765` only. Even if the guest is in the internal network, the
-operator connects from their workstation via a permitted SSH tunnel,
-using local `http://127.0.0.1:8765`. This keeps the provisional setup UI
-unexposed until direct internal TLS and a secure one-time pairing process
-are implemented and reviewed. DHCP, DNS, outbound package repository access
-and SSH routing are not proved merely by the bridge being UP.
+**Stage-0 browser access:** after successful installation, the admin opens
+`https://<guest-IP>:8765/` directly from the selected internal network.
+The service listens on the guest IPv4 network interfaces, is protected
+by TLS and requires username `setup` plus a generated strong setup code.
+The self-signed certificate is initially valid for 30 days; the installer
+prints the SHA256 fingerprint, which the operator must verify before trusting
+the certificate. The code remains valid until it is deliberately rotated or
+replaced by the future identity service. A routing/firewall rule could
+allow connections from other subnets despite the VLAN choice; site-specific
+network ACLs remain necessary. DHCP, outbound DNS/package access and actual
+reachability from the operator workstation are not proven merely by a
+selected bridge being UP. Do not publish port 8765 to the Internet.
 
 In a site-specific installation an operator might know that `vmbr3` is
 the internal bridge. That information belongs in local configuration, **not**
@@ -292,30 +300,32 @@ Therefore a live, isolated test and independent authorization are still
 required. Failed creation must preserve diagnostics and not trigger automatic
 cleanup of resources it did not create.
 
-## Verified WebApp link after success
+## Direct internal HTTPS after successful install
 
-After `pct create`, guest provisioning, the systemd service check, and an
-actual HTTP health request to `127.0.0.1:8765/health` **inside the guest**,
-the installer prints the confirmed guest IPv4 and the browser address:
+Once `pct create`, guest provisioning, systemd activation and an authenticated
+HTTPS request to the guest's `eth0` IP all succeed, the terminal and whiptail
+success dialog show the **real** assigned guest IP and a direct URL:
 
 ```text
 STAGE-0 READY: CT 1000
-Guest IPv4: <verified-guest-ip>
-WebApp HTTP health: PASS
+Guest IPv4: <actual-guest-IP>
+HTTPS + login health: PASS (inside guest)
 
-WEBAPP URL (on your workstation AFTER SSH tunnel):
-  http://127.0.0.1:8765/
+WEBAPP URL (selected internal network):
+  https://<actual-guest-IP>:8765/
 
-ssh -N -J <proxmox-login>@<proxmox-address> \
-  -L 8765:127.0.0.1:8765 tobe4home@<verified-guest-ip>
+LOGIN USER: setup
+SETUP CODE: <generated-random-code>
+SHA256 Fingerprint=<certificate fingerprint>
 ```
 
-The whiptail installer additionally shows a final success dialog with the
-URL and connection instructions. This is **not** a routable LAN web URL:
-the first-stage wizard is intentionally bound to guest loopback and has
-not yet implemented a secure LAN pairing/login mechanism. The browser link
-is valid only after the SSH tunnel is established. If any health/access
-check fails, the installer must not claim `STAGE-0 READY`.
+Access directly from the internal management workstation (no SSH tunnel
+required). Since the certificate is initially self-signed, verify its
+fingerprint **before entering the setup code**; replace it later with a trusted
+internal certificate. The bootstrap checks authentication and HTTPS on the
+guest IP from within the guest, but **cannot prove client-to-guest routing
+or firewall reachability** from every administrative workstation.
+Never enable unauthenticated HTTP to work around those network controls.
 
 ## Access the initial web wizard
 
