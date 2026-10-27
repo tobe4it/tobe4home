@@ -63,6 +63,29 @@ VMID/network eligibility before creating the guest. If the template catalog
 is unavailable, do not substitute an unverified URL. Update guest packages
 after installation to the current supported Rocky Linux 10 minor release.
 
+## Text-based interactive installer (Debian-style menus)
+
+The launcher automatically uses the system `whiptail` utility when available
+and when attached to a capable interactive terminal. It displays a welcome
+dialog, validates the chosen VMID, proposes a prefix and explains why
+underscores cannot be used in DNS hostname labels (e.g. `tb4h_` becomes
+the explicitly confirmed `tb4h-` suggestion). Active storage, bridge and
+VLAN are chosen from read-only Proxmox discovery. The public SSH key is
+validated before any installation is permitted.
+
+No packages are installed on the Proxmox host automatically. When `whiptail`
+is missing, the launcher falls back to the original command-line questions.
+An operator may explicitly install `whiptail` with the host's normal apt
+package manager after review, or run `TOBE4HOME_INSTALLER_UI=text bash
+bootstrap/launch.sh` to always use plain text mode. Cancellation in the
+dialog interface exits without starting a deployment; invalid choices remain
+on the current screen. A fully navigable multi-step back button is planned,
+but is **not** implemented in this prototype.
+
+At the end, a complete read-only preflight is shown. Only the exact explicit
+confirmation `INSTALL <VMID>` authorizes image download or CT creation.
+The dialog cannot bypass the independent host script's checks.
+
 ## First run: one command, guided choices, explicit approval
 
 The guided entry point is `bootstrap/launch.sh`. It runs on an existing
