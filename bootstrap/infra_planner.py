@@ -270,12 +270,112 @@ def render_opentofu(plan):
     return "\n".join(out)
 
 
+def render_html(plan):
+    """Portable, offline topology view. No credentials or script execution."""
+    import html
+    def escape(x):
+        return html.escape(str(x), quote=True)
+    cards = []
+    for g in plan["guests"]:
+        role = escape(g["role"].upper())
+        cards.append(
+            '<article class="service planned">'
+            f'<div class="tag">NEU · CT {g["vmid"]}</div>'
+            f'<h3>{role}</h3>'
+            f'<p>{escape(g["rationale"])}</p>'
+            f'<div class="specs">{g["cores"]} vCPU · '
+            f'{g["memory_mb"]} MiB · {g["disk_gb"]} GiB</div>'
+            f'<p class="muted">{escape(g["hostname"])} · '
+            f'{escape(g["bridge"])} · {escape(g["storage"])}</p>'
+            '</article>'
+        )
+    for role, endpoint in sorted(plan["existing_services"].items()):
+        cards.append(
+            '<article class="service existing">'
+            '<div class="tag">VORHANDEN · VERIFIZIERTES INVENTAR</div>'
+            f'<h3>{escape(role.upper())}</h3>'
+            f'<p>{escape(endpoint)}</p>'
+            '<p class="muted">Kein zusätzlicher LXC eingeplant.</p>'
+            '</article>'
+        )
+    for role, choice in plan["choices"].items():
+        if choice == "omit":
+            cards.append(
+                '<article class="service excluded">'
+                '<div class="tag">NICHT GEWÄHLT</div>'
+                f'<h3>{escape(role.upper())}</h3>'
+                '<p>Kein neuer Gast erforderlich.</p>'
+                '</article>'
+            )
+    if not cards:
+        cards = ['<article class="service">Keine zusätzlichen Gäste.</article>']
+    total = plan["totals"]
+    sha = escape(plan["plan_sha256"])
+    return f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>tobe4home – Infrastrukturplan (Vorschau)</title>
+<style>
+:root {{color-scheme:light dark;font-family:system-ui,-apple-system,sans-serif}}
+body {{margin:0;background:#101826;color:#e4ecf9}}
+main {{max-width:1050px;margin:0 auto;padding:40px 22px 64px}}
+header {{border-bottom:1px solid #3e4d64;margin-bottom:30px;padding-bottom:20px}}
+h1 {{font-size:clamp(26px,4vw,40px);margin:7px 0}} h2{{font-size:21px}}
+.subtitle,.muted {{color:#aab7ca;font-size:14px}}
+.status {{display:inline-block;border:1px solid #cfa960;color:#f9d88e;
+border-radius:24px;padding:7px 13px;font-size:12px;letter-spacing:1px}}
+.summary {{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}}
+.metric,.controller {{background:#1b2940;border:1px solid #344861;border-radius:13px;padding:16px}}
+.metric strong {{display:block;font-size:25px}}
+.controller {{text-align:center;margin:26px auto 0;max-width:440px}}
+.arrow {{text-align:center;font-size:30px;color:#79a6e1;line-height:1.8}}
+.grid {{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}}
+.service {{border:1px solid #465875;border-radius:13px;padding:18px;
+background:#1b2940;min-width:0;overflow-wrap:anywhere}}
+.service h3 {{font-size:20px;margin:15px 0 9px}}
+.service .tag {{font-size:11px;color:#d9eaff;letter-spacing:0.8px}}
+.service.existing {{border-color:#659e8a}}
+.service.excluded {{opacity:0.75}}
+.specs {{font-size:13px;font-weight:650;color:#a8ccff}}
+.warning {{background:#252d3e;border-left:3px solid #cfa960;padding:15px;
+border-radius:8px;margin-top:25px;font-size:13px;line-height:1.65}}
+code {{overflow-wrap:anywhere}} .fingerprint{{font-size:12px;color:#b2bfd2}}
+</style></head><body><main>
+<header><span class="status">VORSCHAU – NICHT FREIGEGEBEN</span>
+<h1>tobe4home Infrastrukturplan</h1>
+<p class="subtitle">Ziel-Host: {escape(plan["site"]["node"])} ·
+Speicher: {escape(plan["site"]["storage"])} ·
+Netzwerk: {escape(plan["site"]["bridge"])}</p>
+<p class="fingerprint">Plan SHA-256: <code>{sha}</code></p></header>
+<section class="summary" aria-label="Ressourcenbedarf">
+<div class="metric"><strong>{total["new_guests"]}</strong> neue LXCs</div>
+<div class="metric"><strong>{total["ram_mb"]}</strong> MiB RAM</div>
+<div class="metric"><strong>{total["disk_gb"]}</strong> GiB Disk</div>
+<div class="metric"><strong>{total["cores"]}</strong> zugewiesene vCPUs</div></section>
+<section aria-label="Abhängigkeiten"><div class="controller">
+<strong>CT 1001 · tobe4home Controller</strong>
+<p class="muted">AnsibleForms · OpenTofu · Ansible-RTE · Freigaben</p></div>
+<div class="arrow" aria-hidden="true">↓</div>
+<div class="grid">{''.join(cards)}</div></section>
+<section class="warning"><strong>Keine Installation ausgelöst.</strong>
+Diese Grafik ist ein deterministischer Entwurf aus einem Inventar-Snapshot.
+Sie ersetzt weder die unmittelbar vor dem Deployment erforderliche
+Proxmox-Inventarisierung noch den OpenTofu-Plan und die
+Freigabe einer unveränderlichen Planrevision. Die OpenTofu-Ressourcen
+sind zunächst deaktiviert (started=false, prevent_destroy=true).
+Keine bestehenden Container automatisch importieren oder löschen.</section>
+</main></body></html>
+"""
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site", type=Path, required=True)
     parser.add_argument("--choices", type=Path, required=True)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--tf", action="store_true", help="print OpenTofu preview instead")
+    parser.add_argument("--html", action="store_true", help="print standalone offline topology HTML")
     args = parser.parse_args(argv)
     try:
         plan = compile_plan(
@@ -285,7 +385,11 @@ def main(argv=None):
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         print(f"PLAN REFUSED: {exc}", file=sys.stderr)
         return 2
-    if args.tf:
+    if args.tf and args.html:
+        parser.error("Choose only one output format")
+    if args.html:
+        sys.stdout.write(render_html(plan))
+    elif args.tf:
         sys.stdout.write(render_opentofu(plan))
     else:
         print(json.dumps(plan, indent=2, ensure_ascii=False, sort_keys=True))
