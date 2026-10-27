@@ -64,6 +64,51 @@ class WizardTests(unittest.TestCase):
             path.write_text('{"site":{"site_label":"x"}}')
             self.assertEqual(wizard.load_plan(path), {})
 
+    def test_all_pages_require_setup_code(self):
+        import base64
+        import threading
+        from http.server import ThreadingHTTPServer
+        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen
+        with tempfile.TemporaryDirectory() as temp:
+            state_file = Path(temp) / "state.json"
+            code = "test-secret-with-32-plus-characters"
+            handler = wizard.make_handler(state_file, code)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with self.assertRaises(HTTPError) as unauth:
+                    urlopen(base + "/", timeout=3)
+                self.assertEqual(unauth.exception.code, 401)
+                self.assertIn("Basic", unauth.exception.headers["WWW-Authenticate"])
+                token = base64.b64encode(("setup:" + code).encode()).decode()
+                req = Request(base + "/health",
+                              headers={"Authorization": "Basic " + token})
+                with urlopen(req, timeout=3) as response:
+                    self.assertEqual(response.read(), b"ok")
+                req = Request(base + "/",
+                              headers={"Authorization": "Basic " + token})
+                with urlopen(req, timeout=3) as response:
+                    self.assertIn(b"tobe4home Setup", response.read())
+                self.assertFalse(state_file.exists())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_short_setup_code_rejected(self):
+        with self.assertRaises(ValueError):
+            wizard.make_handler(Path("/tmp/example.json"), "too-short")
+
+    def test_tls_required_by_executable_entry_point(self):
+        script = SCRIPT.read_text()
+        self.assertIn("ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)", script)
+        self.assertIn("tls.load_cert_chain", script)
+        self.assertIn('default="0.0.0.0"', script)
+        self.assertIn("def _require_auth(self)", script)
+
     def test_all_prerequisites_are_present(self):
         names = [name for _, name, _ in wizard.PHASES]
         self.assertEqual(len(names), 7)
