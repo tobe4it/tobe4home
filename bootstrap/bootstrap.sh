@@ -6,7 +6,8 @@ umask 077
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 VMID="" TEMPLATE="auto" TEMPLATE_STORAGE="local" STORAGE="" BRIDGE="" VLAN_TAG="" SSH_KEY="" APPLY=0
-HOSTNAME="tobe4home-setup"
+CONTAINER_PREFIX="tobe4home" PREFIX_EXPLICIT=0
+HOSTNAME=""
 MEMORY=1024 CORES=1 DISK=8 PORT=8765
 
 usage() {
@@ -17,7 +18,7 @@ Usage:
   bash bootstrap/bootstrap.sh --vmid ID --storage ROOTFS_STORAGE \
     --ssh-public-key /path/to/key.pub [--template-storage local] \
     [--template auto|STORAGE:vztmpl/FILE] [--bridge vmbrN] \
-    [--vlan-tag 1..4094] [--apply]
+    [--vlan-tag 1..4094] [--container-prefix PREFIX] [--apply]
 
 The official Rocky Linux 10 template is automatically discovered and, after
 --apply, downloaded if missing. Omit --bridge for interactive bridge/VLAN choice.
@@ -25,18 +26,21 @@ The official Rocky Linux 10 template is automatically discovered and, after
 Without --apply this is a read-only validation and plan.
 --apply creates ONE new unprivileged LXC, installs Python/SSH and starts
 the local-only setup web application. It never edits an existing VM/CT.
-The template is obtained only from the official Proxmox pveam catalog.
+The default hostname prefix "tobe4home-" is a suggestion, not mandatory.
+The --container-prefix option overrides it; the setup guest uses PREFIX-setup.
+The official Rocky Linux 10 template is discovered from the Proxmox catalog.
 EOF
 }
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 while (($#)); do
   case "$1" in
-    --vmid|--template|--template-storage|--storage|--bridge|--vlan-tag|--ssh-public-key)
+    --vmid|--template|--template-storage|--storage|--bridge|--vlan-tag|--container-prefix|--ssh-public-key)
       (($# >= 2)) || die "Missing value for $1"
       case "$1" in
         --vmid) VMID="$2" ;; --template) TEMPLATE="$2" ;;
         --template-storage) TEMPLATE_STORAGE="$2" ;; --vlan-tag) VLAN_TAG="$2" ;;
+        --container-prefix) CONTAINER_PREFIX="$2"; PREFIX_EXPLICIT=1 ;;
         --storage) STORAGE="$2" ;; --bridge) BRIDGE="$2" ;;
         --ssh-public-key) SSH_KEY="$2" ;;
       esac
@@ -52,6 +56,22 @@ for cmd in pct pvesm pvesh pveam ip python3; do
   command -v "$cmd" >/dev/null || die "Missing required command: $cmd"
 done
 [[ "$VMID" =~ ^[1-9][0-9]{2,8}$ ]] || die "Invalid VMID"
+# Suggest, but never impose, a prefix. Hostnames for subsequent guests may be
+# changed independently in the wizard; editing them never renames this setup CT.
+if (( PREFIX_EXPLICIT == 0 )) && [[ -t 0 ]]; then
+  read -r -p 'LXC hostname prefix [tobe4home-]: ' PREFIX_INPUT ||
+    die "Prefix prompt cancelled"
+  if [[ -n "$PREFIX_INPUT" ]]; then
+    CONTAINER_PREFIX="$PREFIX_INPUT"
+  fi
+fi
+# Accept a common trailing separator, store the normalized DNS label only.
+CONTAINER_PREFIX="${CONTAINER_PREFIX%-}"
+[[ "$CONTAINER_PREFIX" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] ||
+  die "Prefix must contain lowercase ASCII letters, digits, and internal hyphens"
+(( ${#CONTAINER_PREFIX} <= 57 )) ||
+  die "Prefix too long: PREFIX-setup must be at most 63 characters"
+HOSTNAME="${CONTAINER_PREFIX}-setup"
 [[ "$TEMPLATE_STORAGE" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Invalid template storage"
 [[ "$STORAGE" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Invalid rootfs storage identifier"
 [[ -f "$SCRIPT_DIR/networks.py" ]] || die "Missing read-only network selection module"
@@ -114,6 +134,7 @@ VMID_USED="$(python3 -c 'import json,sys; target=int(sys.argv[1]); print(int(any
 printf 'Stage-0 preflight: PASS\nVMID: %s\nOS template: %s\nCached: %s\nRootfs: %s\nBridge: %s\nVLAN: %s\n' \
   "$VMID" "$TEMPLATE" "$([[ -s "$TEMPLATE_PATH" ]] && echo yes || echo no)" \
   "$STORAGE" "$BRIDGE" "${VLAN_TAG:-untagged}"
+printf 'Suggested hostname prefix: %s-\nStage-0 hostname: %s\n' "$CONTAINER_PREFIX" "$HOSTNAME"
 if ((APPLY == 0)); then
   echo "DRY RUN: no resources changed. Add --apply to create the setup LXC."
   exit 0
@@ -156,6 +177,12 @@ pct exec "$VMID" -- dnf -y install python3 openssh-server shadow-utils
 pct exec "$VMID" -- /usr/sbin/useradd --create-home --shell /bin/bash tobe4home
 pct exec "$VMID" -- install -d -m 0700 -o tobe4home -g tobe4home /home/tobe4home/.ssh
 pct push "$VMID" "$SSH_KEY" /home/tobe4home/.ssh/authorized_keys --user tobe4home --group tobe4home --perms 0600
+pct exec "$VMID" -- install -d -m 0755 /etc/tobe4home
+# Whitelisted DNS-label input only. Keep the selected bootstrap prefix available
+# as an editable suggestion for *future* guest names in the setup wizard.
+printf 'TOBE4HOME_CONTAINER_PREFIX=%s\n' "$CONTAINER_PREFIX" |
+  pct exec "$VMID" -- tee /etc/tobe4home/bootstrap.env >/dev/null
+pct exec "$VMID" -- chmod 0644 /etc/tobe4home/bootstrap.env
 pct exec "$VMID" -- install -d -m 0755 /opt/tobe4home
 pct exec "$VMID" -- install -d -m 0700 -o tobe4home -g tobe4home /var/lib/tobe4home
 pct push "$VMID" "$SCRIPT_DIR/wizard.py" /opt/tobe4home/wizard.py --perms 0644
