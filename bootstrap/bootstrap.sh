@@ -118,13 +118,17 @@ grep -Eq '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) [A-Za-z0-9+/=]+( .*)?$' "$S
   die "Incomplete bootstrap checkout"
 # The selected template must be present in the catalog OR already cached.
 TEMPLATE_FILE="${TEMPLATE#*:vztmpl/}"
-TEMPLATE_PATH="$(pvesm path "$TEMPLATE")" || die "Unable to resolve template storage path"
-if [[ ! -s "$TEMPLATE_PATH" ]]; then
+# A missing (not-yet-downloaded) template may make 'pvesm path' fail.
+# Preview must remain valid and read-only even when the archive is absent.
+TEMPLATE_PATH="$(pvesm path "$TEMPLATE" 2>/dev/null || true)"
+TEMPLATE_CACHED=0
+if [[ -n "$TEMPLATE_PATH" && -s "$TEMPLATE_PATH" ]]; then
+  TEMPLATE_CACHED=1
+else
   CATALOG="${CATALOG:-$(pveam available --section system)}" ||
     die "Cannot read official Proxmox template catalog"
-  printf '%s\n' "$CATALOG" | awk '$1 == "system" {print $2}' |
-    grep -Fxq -- "$TEMPLATE_FILE" ||
-    die "Template not cached and not in official pveam catalog"
+  awk -v name="$TEMPLATE_FILE" '$1 == "system" && $2 == name {found=1} END {exit !found}' \
+    <<< "$CATALOG" || die "Template not cached and not in official pveam catalog"
 fi
 RESOURCES="$(pvesh get /cluster/resources --type vm --output-format json)" ||
   die "Unable to inspect cluster VMIDs (refusing to proceed)"
@@ -132,7 +136,7 @@ VMID_USED="$(python3 -c 'import json,sys; target=int(sys.argv[1]); print(int(any
   die "Unable to parse cluster VMIDs"
 [[ "$VMID_USED" == 0 ]] || die "VMID already allocated in Proxmox cluster"
 printf 'Stage-0 preflight: PASS\nVMID: %s\nOS template: %s\nCached: %s\nRootfs: %s\nBridge: %s\nVLAN: %s\n' \
-  "$VMID" "$TEMPLATE" "$([[ -s "$TEMPLATE_PATH" ]] && echo yes || echo no)" \
+  "$VMID" "$TEMPLATE" "$([[ "$TEMPLATE_CACHED" -eq 1 ]] && echo yes || echo no)" \
   "$STORAGE" "$BRIDGE" "${VLAN_TAG:-untagged}"
 printf 'Suggested hostname prefix: %s-\nStage-0 hostname: %s\n' "$CONTAINER_PREFIX" "$HOSTNAME"
 if ((APPLY == 0)); then
@@ -140,15 +144,19 @@ if ((APPLY == 0)); then
   exit 0
 fi
 
-if [[ ! -s "$TEMPLATE_PATH" ]]; then
+if (( TEMPLATE_CACHED == 0 )); then
   echo "Updating official Proxmox template catalog (approved apply phase)..."
   pveam update || die "Failed to refresh official template catalog"
-  pveam available --section system | awk '$1 == "system" {print $2}' |
-    grep -Fxq -- "$TEMPLATE_FILE" ||
+  UPDATED_CATALOG="$(pveam available --section system)" ||
+    die "Cannot read refreshed Proxmox catalog"
+  awk -v name="$TEMPLATE_FILE" '$1 == "system" && $2 == name {found=1} END {exit !found}' \
+    <<< "$UPDATED_CATALOG" ||
     die "Requested template disappeared from official catalog"
-  echo "Downloading verified catalog template $TEMPLATE_FILE to $TEMPLATE_STORAGE..."
+  echo "Downloading official catalog template $TEMPLATE_FILE to $TEMPLATE_STORAGE..."
   pveam download "$TEMPLATE_STORAGE" "$TEMPLATE_FILE" ||
     die "Template download failed; no CT created"
+  TEMPLATE_PATH="$(pvesm path "$TEMPLATE")" ||
+    die "Unable to resolve freshly downloaded template"
   [[ -s "$TEMPLATE_PATH" ]] || die "Downloaded template not readable; no CT created"
 fi
 # Recheck occupancy after download, as it may take time.
