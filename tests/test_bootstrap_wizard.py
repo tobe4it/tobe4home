@@ -68,7 +68,7 @@ class WizardTests(unittest.TestCase):
         draft = dict(GOOD)
         page = wizard.render(draft, "csrf")
         self.assertIn('action="/save"', page)
-        self.assertIn('Weiter zur Bestandsaufnahme', page)
+        self.assertIn('weiter zur Bestandsaufnahme', page)
         self.assertIn('href="/discovery"', page)
         self.assertIn('href="/plan"', page)
         self.assertNotIn('1. 00', page)
