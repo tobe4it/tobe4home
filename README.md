@@ -47,7 +47,12 @@ git clone --depth 1 --branch feat/bootstrap-setup-wizard-20261027 https://github
 ```
 
 This clones version-controlled installer files and starts a guided host-side
-session. When `whiptail` is already installed on Proxmox, the installer opens
+session. Admin SSH public keys are discovered automatically from the original
+sudo user's and Proxmox root's SSH login authorizations; the operator selects
+a fingerprint instead of manually creating a public-key file. Keys with
+restrictive authorized_keys options are skipped, and a public-key paste
+option remains available if no existing login key is suitable.
+When `whiptail` is already installed on Proxmox, the installer opens
 a **Debian-style text-mode setup interface** (dialog boxes and selection menus).
 Otherwise it uses a simple command-line fallback without installing packages
 on the host. To enable dialogs explicitly on Proxmox, first review and install
