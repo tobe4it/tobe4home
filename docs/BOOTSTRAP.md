@@ -63,6 +63,46 @@ VMID/network eligibility before creating the guest. If the template catalog
 is unavailable, do not substitute an unverified URL. Update guest packages
 after installation to the current supported Rocky Linux 10 minor release.
 
+## Network role recommendation and internal reachability
+
+**Default recommendation: a dedicated internal infrastructure/service VLAN**,
+with controlled SSH access from the operator's internal admin workstation,
+working DHCP (or a deliberately configured static address), DNS, routing to
+security update mirrors and an explicit firewall allowlist. Do **not** infer
+the security role from `vmbr0`, `vmbr2`, host default routes or VLAN numbers.
+
+The console installer first discovers active bridges and optional 802.1Q tags,
+then asks the operator to **classify the selected segment**. This is a
+non-authoritative operator declaration, not network analysis:
+
+| Declared network role | Bootstrap default |
+| --- | --- |
+| Intern / infrastructure | Recommended |
+| Hypervisor management | Conditional; avoid unrestricted access to Proxmox |
+| IoT | Not recommended for an administrator-facing service |
+| DMZ | Not recommended; no public Internet exposure required |
+| Other / unknown | Explicit risk confirmation and manual verification |
+
+For every non-recommended role, the installer shows a warning and asks for
+confirmation before continuing. Selection does **not** auto-create VLANs,
+alter firewalls, open Proxmox ports or make any network reachable.
+
+**Access limitation of current prototype:** the initial web app listens only
+on `127.0.0.1:8765` *inside the guest*. Even on an internal VLAN it cannot be
+opened directly as `http://<guest-ip>:8765`. An admin workstation must be
+able to reach the guest's SSH service, directly or using a permitted jump
+host, and set up a local SSH tunnel to reach the UI through
+`http://127.0.0.1:8765` locally. The Proxmox host management network should
+not be opened merely to make this possible. Existing firewall policy still
+applies, and the script does not prove guest reachability.
+
+**Future acceptance criterion for direct internal browser access:** only
+consider an explicit opt-in after implementing TLS, a one-time pairing
+credential bound to the administrator/session, request authentication,
+rate limiting, restrictive source network policy and a clean stop/recovery
+path. OIDC cannot be required for the very first bootstrap before an
+identity provider exists. Direct guest HTTP exposure is not part of PR #1.
+
 ## Text-based interactive installer (Debian-style menus)
 
 The launcher automatically uses the system `whiptail` utility when available
