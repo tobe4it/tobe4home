@@ -119,6 +119,40 @@ if [[ "$VLAN" != "-" ]]; then
   ARGS+=(--vlan-tag "$VLAN")
 fi
 
+echo
+echo "Network role recommendation for the setup LXC:"
+echo "  1) Intern / infrastructure: recommended, administrator can reach guest SSH"
+echo "  2) Management: only with strict separation from the Proxmox control plane"
+echo "  3) IoT: not recommended for administration"
+echo "  4) DMZ: not recommended for a private setup wizard"
+echo "  5) Other / unknown: verify reachability manually"
+echo "Bridge name and VLAN tag do not disclose their security role."
+while true; do
+  read -r -p "Classify the selected $BRIDGE network [1]: " NETWORK_ROLE_INPUT ||
+    fail "Network role selection cancelled"
+  case "${NETWORK_ROLE_INPUT:-1}" in
+    1) NETWORK_ROLE=intern ;;
+    2) NETWORK_ROLE=management ;;
+    3) NETWORK_ROLE=iot ;;
+    4) NETWORK_ROLE=dmz ;;
+    5) NETWORK_ROLE=other ;;
+    *) echo "Select a number between 1 and 5."; continue ;;
+  esac
+  break
+done
+echo "The web wizard listens on the guest's loopback ONLY."
+echo "Administration from your internal workstation therefore needs guest SSH"
+echo "through a permitted route or SSH jump host, plus local port forwarding."
+if [[ "$NETWORK_ROLE" != intern ]]; then
+  echo "WARNING: selected role $NETWORK_ROLE is not the default recommended network."
+  read -r -p "Continue with the selected role? [y/N]: " NETWORK_APPROVAL ||
+    fail "Network role confirmation cancelled"
+  [[ "$NETWORK_APPROVAL" =~ ^[yY]([eE][sS])?$ ]] || {
+    echo "Network selection cancelled before installation."
+    exit 0
+  }
+fi
+
 heading "5/5 · Public SSH key"
 echo "Use the public key whose PRIVATE counterpart is on your admin workstation."
 echo "Do NOT use a host-only key whose private counterpart cannot be accessed."
@@ -130,6 +164,7 @@ KEY="$(ask "Public SSH key file path" "/root/.ssh/id_ed25519.pub")"
 ARGS+=(--ssh-public-key "$KEY")
 echo "OS: Rocky Linux 10 (official Proxmox catalog; auto-download on apply)"
 echo "Template storage: local"
+echo "Declared network role: $NETWORK_ROLE (not verified automatically)"
 
 heading "READ-ONLY PREVIEW – no downloads and no guest changes"
 bash "$BOOTSTRAP" "${ARGS[@]}"
