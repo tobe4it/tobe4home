@@ -311,10 +311,15 @@ $PREVIEW
 Es wurde kein Container installiert."
   exit 1
 }
-msg "Vorprüfung erfolgreich" "$PREVIEW
+whiptail --backtitle "$BACKTITLE" --title "Vorprüfung erfolgreich" \
+  --scrolltext --msgbox "$PREVIEW
 
-Der nächste Schritt wäre die Erstellung von genau EINEM LXC.
-Noch ist keine Installation erfolgt."
+WICHTIG: Read-only-Prüfungen können einen neuen ZFS-Subvolume-
+Mount oder seine UID/GID-Zuordnung noch nicht vollständig testen.
+Netzwerkkonfiguration und Paketquellen werden erst im Gast geprüft.
+
+Der nächste Schritt erstellt genau EINEN LXC.
+Noch ist keine Installation erfolgt." 24 96
 
 APPROVAL="$(input "Verbindliche Freigabe" \
   "ENTWICKLUNGSVERSION – bisher kein vollständiger Proxmox-Realtest.
@@ -333,3 +338,22 @@ fi
 # From here on, this is the explicitly approved write phase.
 printf '\n=== tobe4home: bestätigte Stage-0-Installation (VMID %s) ===\n' "$VMID"
 bash "$BOOTSTRAP" "${ARGS[@]}" --apply
+# Only reached after the core bootstrap verified its HTTP health endpoint.
+GUEST_ADDRESS="$(pct exec "$VMID" -- ip -4 -o addr show dev eth0 2>/dev/null |
+  awk '{split($4,a,"/"); if(a[1] != "") {print a[1]; exit}}')"
+PVE_LOGIN="${SUDO_USER:-root}"
+whiptail --backtitle "$BACKTITLE" --title "tobe4home – Setup bereit" \
+  --scrolltext --msgbox "CT $VMID (${PREFIX}-setup) ist eingerichtet.
+Die lokale WebApp hat ihren HTTP-Healthcheck bestanden.
+
+WEBADRESSE (auf deinem Rechner NACH Einrichtung des SSH-Tunnels):
+http://127.0.0.1:8765/
+
+Gast-IP: $GUEST_ADDRESS
+
+Tunnel vom Administrationsgerät:
+ssh -N -J $PVE_LOGIN@<PROXMOX-ADRESSE> \
+  -L 8765:127.0.0.1:8765 tobe4home@$GUEST_ADDRESS
+
+Diese Adresse ist nicht direkt aus dem LAN erreichbar.
+Ein SSH-Tunnel ist wegen der noch fehlenden Authentifizierung nötig." 23 95
