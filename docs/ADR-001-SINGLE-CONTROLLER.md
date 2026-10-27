@@ -2,6 +2,11 @@
 
 Status: **architecture decision / proposed implementation target** (27 October 2026). This decision changes the future clean-install topology; it has **not** migrated the existing test installation.
 
+**UI selection:** [ADR 002 – AnsibleForms 7](ADR-002-ANSIBLEFORMS-UI.md)
+is the accepted frontend for this controller. A small deterministic
+Proxmox-topology planner remains our own backend; AnsibleForms supplies
+forms, workflow approval and job output. No dedicated custom full UI.
+
 ## Context
 
 The stage-0 prototype currently provisions `CT 1000 (tb4h-setup)` with a small HTTPS form. It then provisions `CT 1001 (tb4h-ansible)` via an explicit host-side script. Keeping both as permanent control-plane services duplicates wizard, configuration, maintenance, credentials and recovery concerns.
