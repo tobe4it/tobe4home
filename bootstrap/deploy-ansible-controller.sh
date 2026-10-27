@@ -8,6 +8,7 @@ VMID=1001
 BRIDGE=""
 STORAGE=""
 TEMPLATE_STORAGE="local"
+DNS_SERVER=""
 HOSTNAME="tb4h-ansible"
 APPLY=0
 for arg in "$@"; do
@@ -15,8 +16,9 @@ for arg in "$@"; do
     --bridge=*) BRIDGE="${arg#*=}" ;;
     --storage=*) STORAGE="${arg#*=}" ;;
     --template-storage=*) TEMPLATE_STORAGE="${arg#*=}" ;;
+    --nameserver=*) DNS_SERVER="${arg#*=}" ;;
     --apply) APPLY=1 ;;
-    *) echo "Usage: $0 --bridge=vmbrX --storage=STORAGE [--template-storage=local] [--apply]" >&2; exit 2 ;;
+    *) echo "Usage: $0 --bridge=vmbrX --storage=STORAGE [--template-storage=local] [--nameserver=IP] [--apply]" >&2; exit 2 ;;
   esac
 done
 [[ "$EUID" -eq 0 ]] || { echo "Must run as root on Proxmox" >&2; exit 2; }
@@ -67,6 +69,35 @@ pvesm status --content rootdir |
 [[ -d "/sys/class/net/$BRIDGE/bridge" ]] ||
   { echo "STOP: selected bridge does not exist" >&2; exit 2; }
 
+# The internal DNS resolver has already been entered/detected and saved
+# by Stage 0. Do not blindly inherit the Proxmox host's DNS resolver.
+if [[ -z "$DNS_SERVER" ]]; then
+  DNS_SERVER="$(pct exec 1000 -- python3 -c '
+import ipaddress, json
+from pathlib import Path
+values = json.loads(Path("/var/lib/tobe4home/site.local.json").read_text())
+address = ipaddress.ip_address(values.get("dns_resolver", ""))
+if address.version != 4 or address.is_loopback or address.is_multicast:
+    raise SystemExit(2)
+if address.is_unspecified or address.is_link_local:
+    raise SystemExit(2)
+print(address)
+' 2>/dev/null)" ||
+    { echo "STOP: cannot read saved DNS from CT 1000; specify --nameserver=IP" >&2; exit 2; }
+fi
+python3 - "$DNS_SERVER" <<'PY' ||
+  { echo "STOP: unsupported DNS server address" >&2; exit 2; }
+import ipaddress, sys
+try:
+    addr = ipaddress.ip_address(sys.argv[1])
+    if addr.version != 4 or addr.is_loopback or addr.is_unspecified:
+        raise ValueError("unsupported")
+    if addr.is_link_local or addr.is_multicast:
+        raise ValueError("unsupported")
+except ValueError:
+    raise SystemExit(2)
+PY
+
 TEMPLATE="rockylinux-10-default_20251001_amd64.tar.xz"
 pveam list "$TEMPLATE_STORAGE" |
   awk -v name="$TEMPLATE_STORAGE:vztmpl/$TEMPLATE" '$1 == name {found=1} END {exit !found}' ||
@@ -76,6 +107,7 @@ echo "=== TOBE4HOME STAGE-1 CONTROLLER ==="
 echo "New CT: $VMID ($HOSTNAME) | unprivileged | no autostart"
 echo "Rootfs: $STORAGE:16 | cores: 2 | RAM: 2048 MiB"
 echo "Bridge: $BRIDGE | DHCP | guest firewall enabled"
+echo "Nameserver: $DNS_SERVER (operator-reviewed Stage-0 configuration)"
 echo "Template: $TEMPLATE_STORAGE:vztmpl/$TEMPLATE"
 echo "Action: create + start CT 1001; install ansible-core/git/SSH via DNF"
 echo "No changes to any existing guest. No automatic cleanup on failure."
@@ -97,11 +129,19 @@ read -r -p "Type DEPLOY 1001 to approve creation: " CONFIRM
     --memory 2048 --cores 2 --swap 256 \
     --rootfs "$STORAGE:16" \
     --net0 "name=eth0,bridge=$BRIDGE,ip=dhcp,firewall=1" \
+    --nameserver "$DNS_SERVER" \
     --description "tobe4home Stage-1 Ansible controller - under review"
 )
 echo "CREATED: CT $VMID"
 pct start "$VMID"
 echo "STARTED: CT $VMID"
+# A DHCP IPv4 lease does not prove that the guest can resolve repo hosts.
+# Never enter DNF if the nameserver is unavailable.
+if ! pct exec "$VMID" -- getent ahostsv4 mirrors.rockylinux.org >/dev/null 2>&1; then
+  echo "STOP: DNS for Rocky repositories failed in CT 1001" >&2
+  echo "Run the dedicated resume-ansible-controller.sh after checking CT DNS" >&2
+  exit 2
+fi
 pct exec "$VMID" -- dnf -y install ansible-core git openssh-clients openssh-server python3 iproute
 pct exec "$VMID" -- systemctl enable --now sshd
 pct exec "$VMID" -- ansible --version
