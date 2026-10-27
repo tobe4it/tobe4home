@@ -96,10 +96,10 @@ def parse_dhcp_dns(raw: str) -> list[str]:
     """Recognize NetworkManager DHCP option 6, not arbitrary IP4.DNS values."""
     found = []
     for line in raw.splitlines():
-        match = re.search(r"(?:^|\\s)domain_name_servers\\s*=\\s*(.+)$", line)
+        match = re.search(r"(?:^|\s)domain_name_servers\s*=\s*(.+)$", line)
         if not match:
             continue
-        for token in re.split(r"[,\\s]+", match.group(1).strip()):
+        for token in re.split(r"[,\s]+", match.group(1).strip()):
             ip = usable_dns_address(token)
             if ip and ip not in found:
                 found.append(ip)
