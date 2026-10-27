@@ -112,7 +112,11 @@ else
 fi
 [[ -f "$SSH_KEY" && -r "$SSH_KEY" ]] || die "SSH public key not readable"
 [[ "$(wc -l < "$SSH_KEY")" -eq 1 ]] || die "Use a single public key"
-grep -Eq '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) [A-Za-z0-9+/=]+( .*)?
+grep -Eq '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) [A-Za-z0-9+/=]+( .*)?$' "$SSH_KEY" ||
+  die "Invalid SSH public key"
+command -v ssh-keygen >/dev/null || die "ssh-keygen is required for public-key validation"
+ssh-keygen -lf "$SSH_KEY" >/dev/null 2>&1 ||
+  die "OpenSSH rejected the selected public key"
 [[ -f "$SCRIPT_DIR/wizard.py" && -f "$SCRIPT_DIR/wizard.service" && -f "$SCRIPT_DIR/sshd.conf" ]] ||
   die "Incomplete bootstrap checkout"
 # The selected template must be present in the catalog OR already cached.
