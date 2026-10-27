@@ -10,8 +10,8 @@ fail() { printf 'STOP: %s\n' "$*" >&2; exit 2; }
 
 for arg in "$@"; do
   case "$arg" in
-    --bridge=*) BRIDGE="\${arg#*=}" ;;
-    --nameserver=*) DNS_OVERRIDE="\${arg#*=}" ;;
+    --bridge=*) BRIDGE="${arg#*=}" ;;
+    --nameserver=*) DNS_OVERRIDE="${arg#*=}" ;;
     --apply) APPLY=1 ;;
     *) fail "Usage: $0 --bridge=vmbrN [--nameserver=DNS-IP] [--apply]" ;;
   esac
@@ -29,7 +29,7 @@ grep -qx 'hostname: tb4h-ansible' <<< "$CT_CONFIG" ||
   fail "CT 1001 is not tb4h-ansible"
 grep -qx 'unprivileged: 1' <<< "$CT_CONFIG" ||
   fail "CT 1001 is not unprivileged"
-grep -Eq "^net0: .*bridge=\${BRIDGE}(,|$)" <<< "$CT_CONFIG" ||
+grep -Eq "^net0: .*bridge=${BRIDGE}(,|$)" <<< "$CT_CONFIG" ||
   fail "CT 1001 is not attached to the selected bridge"
 grep -Eq '^rootfs: [^[:space:]]+' <<< "$CT_CONFIG" ||
   fail "CT root filesystem not configured"
