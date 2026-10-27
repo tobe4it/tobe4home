@@ -111,15 +111,15 @@ class WizardTests(unittest.TestCase):
 
     def test_dns_sources_are_parsed_without_guessing(self):
         self.assertEqual(wizard.parse_dhcp_dns(
-            "GENERAL.DEVICE: eth0\\n"
-            "DHCP4.OPTION[1]: domain_name_servers = 10.50.0.53 10.50.0.54\\n"
-            "IP4.DNS[1]: 203.0.113.1\\n"),
+            "GENERAL.DEVICE: eth0\n"
+            "DHCP4.OPTION[1]: domain_name_servers = 10.50.0.53 10.50.0.54\n"
+            "IP4.DNS[1]: 203.0.113.1\n"),
             ["10.50.0.53", "10.50.0.54"])
         self.assertEqual(wizard.parse_dhcp_dns("IP4.DNS[1]: 203.0.113.1"),
                          [])
         self.assertEqual(wizard.parse_resolv_conf(
-            "# --- BEGIN PVE ---\\nnameserver 127.0.0.53\\n"
-            "nameserver 10.50.0.53\\nnameserver 10.50.0.53\\n"),
+            "# --- BEGIN PVE ---\nnameserver 127.0.0.53\n"
+            "nameserver 10.50.0.53\nnameserver 10.50.0.53\n"),
             ["10.50.0.53"])
         self.assertEqual(wizard.parse_resolv_conf("nameserver 127.0.0.1"), [])
 
@@ -127,12 +127,11 @@ class WizardTests(unittest.TestCase):
         import subprocess
         from unittest.mock import patch
         command = subprocess.CompletedProcess(
-            [], 0,
-            "DHCP4.OPTION[1]: domain_name_servers = 10.50.0.53\\n", "")
-        with patch.object(wizard.subprocess, "run", return_value=command), \\
-                patch.object(wizard.Path, "read_text",
-                             return_value="# --- BEGIN PVE ---\\nnameserver 10.50.0.1\\n"):
-            info = wizard.detect_network_dns()
+            [], 0, "DHCP4.OPTION[1]: domain_name_servers = 10.50.0.53\n", "")
+        with patch.object(wizard.subprocess, "run", return_value=command):
+            with patch.object(wizard.Path, "read_text",
+                              return_value="# --- BEGIN PVE ---\nnameserver 10.50.0.1\n"):
+                info = wizard.detect_network_dns()
         self.assertEqual(info["value"], "10.50.0.53")
         self.assertIn("DHCP", info["source"])
         self.assertIn("Achtung", info["warning"])
@@ -141,10 +140,10 @@ class WizardTests(unittest.TestCase):
         import subprocess
         from unittest.mock import patch
         command = subprocess.CompletedProcess([], 127, "", "not installed")
-        with patch.object(wizard.subprocess, "run", return_value=command), \\
-                patch.object(wizard.Path, "read_text",
-                             return_value="# --- BEGIN PVE ---\\nnameserver 10.50.0.53\\n"):
-            info = wizard.detect_network_dns()
+        with patch.object(wizard.subprocess, "run", return_value=command):
+            with patch.object(wizard.Path, "read_text",
+                              return_value="# --- BEGIN PVE ---\nnameserver 10.50.0.53\n"):
+                info = wizard.detect_network_dns()
         self.assertEqual(info["value"], "10.50.0.53")
         self.assertIn("nicht bestätigt", info["source"])
 
