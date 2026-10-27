@@ -83,9 +83,10 @@ def normalize(site, choices, inventory):
         raise ValueError("Invalid VMID range")
     if (clean_site["vmid_to"] - clean_site["vmid_from"]) > 1000:
         raise ValueError("VMID planning range is too broad")
-    if any(ipaddress.IPv4Address(clean_site["dns_resolver"]).is_link_local
-           for _ in (0,)):
-        raise ValueError("Link-local DNS is not supported")
+    resolver = ipaddress.IPv4Address(clean_site["dns_resolver"])
+    if (resolver.is_link_local or resolver.is_loopback or
+            resolver.is_unspecified or resolver.is_multicast):
+        raise ValueError("Loopback, multicast or unroutable DNS is not supported")
     if inventory.get("node") != clean_site["node"]:
         raise ValueError("Snapshot does not belong to selected Proxmox node")
     if clean_site["bridge"] not in inventory.get("bridges", []):
@@ -123,8 +124,15 @@ def normalize(site, choices, inventory):
             if entry.get("verified") is not True or not isinstance(entry.get("endpoint"), str):
                 raise ValueError(f"Existing {role} service must be verified")
             endpoint = entry["endpoint"]
-            if not endpoint.startswith("https://") or len(endpoint) > 512:
-                raise ValueError(f"Existing {role} endpoint must use HTTPS")
+            from urllib.parse import urlsplit
+            try:
+                parsed = urlsplit(endpoint)
+                if (parsed.scheme != "https" or not parsed.hostname or
+                        parsed.username or parsed.password or parsed.query or
+                        parsed.fragment or len(endpoint) > 512):
+                    raise ValueError("Unexpected URL parts")
+            except ValueError as exc:
+                raise ValueError(f"Existing {role} endpoint must be clean HTTPS") from exc
         clean_choices[role] = mode
     return clean_site, clean_choices, inventory
 
