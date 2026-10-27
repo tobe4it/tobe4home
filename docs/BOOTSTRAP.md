@@ -264,10 +264,16 @@ tar: /var/lib/lxc/1000/rootfs: Cannot open: Permission denied
 unable to create CT 1000 - command 'lxc-usernsexec ... tar ...' failed
 ```
 
-This is a **rootfs access / unprivileged-idmapping / storage property**
-investigation, not proof that Rocky Linux 10 cannot run. Similar errors occur
-with other OS templates under Proxmox. Rootfs allocation and extraction
-were never tested by the earlier read-only preflight.
+This is a **rootfs access / unprivileged-idmapping** failure, not proof
+that Rocky Linux 10 cannot run. A strong, testable cause was found in the
+bootstrap itself: its security-oriented global `umask 077` was inherited by
+`pct create`, while the failed installation left
+`/var/lib/lxc/1000/rootfs` as `root:root` with mode `0700`. Proxmox's
+unprivileged template extractor runs with mapped host uid 100000 and cannot
+traverse this root-only directory. The `pct create` subprocess now runs with
+a scoped `umask 022`, while the bootstrap preserves restrictive permissions
+on secrets. This is a **probable root cause**, not yet a real-world verified fix.
+Storage ACL settings and pre-existing paths still require inspection.
 
 **Operator safety:** do not rerun the deployment, use a privileged container,
 alter ZFS ACL properties, run `chmod`/`chown` on shared host directories,
@@ -280,6 +286,8 @@ sudo pct config 1000 || true
 sudo pvesm status --content rootdir
 sudo namei -l /var/lib/lxc/1000/rootfs
 sudo ls -ldn /var/lib/lxc /var/lib/lxc/1000 /var/lib/lxc/1000/rootfs 2>&1
+sudo getfacl -p /var/lib/lxc/1000 /var/lib/lxc/1000/rootfs
+sudo findmnt -T /var/lib/lxc/1000/rootfs -o TARGET,SOURCE,FSTYPE,OPTIONS
 sudo zfs list -o name,mountpoint,acltype -t filesystem |
   grep -E '(^NAME|1000|rpool/data)'
 sudo zfs get -r -o name,property,value acltype,aclmode rpool/data
