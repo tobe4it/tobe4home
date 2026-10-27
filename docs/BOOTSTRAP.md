@@ -130,6 +130,38 @@ This selection is for access to the new setup LXC, **not** for obtaining or
 granting privileged access to Proxmox. The network still needs to allow
 SSH from the admin workstation or an explicitly permitted jump host.
 
+## Stage-1 executable entry: approved offline recovery-starter export
+
+The **Plan** page now offers an explicit next step: **Recovery-Bootstrap**.
+This opens a separate page (`GET /recovery`) with a real, opt-in action:
+`POST /recovery/export` builds and downloads a reproducible ZIP archive
+(`tobe4home-stage1-recovery.zip`). The endpoint requires the existing
+authenticated HTTPS session, the wizard's CSRF token, a saved/validated site
+configuration, and the explicit export button. Unapproved POST requests and
+arbitrary execution endpoints remain rejected.
+
+The downloadable archive includes:
+- `site/site.local.json`: current validated site parameters,
+  `deployment_enabled: false`;
+- `ansible/inventory.yml`, `ansible/ansible.cfg`,
+  `ansible/playbooks/verify-local.yml`: local-only Ansible skeleton with no
+  host credentials or remote write targets;
+- `README-RECOVERY.md`: explicit limitations and isolated verification steps;
+- `SHA256SUMS`, `verify-recovery.py`: offline integrity verification.
+
+Generation is performed **entirely in memory**, so it does not mutate host
+services, guest packages, NAS storage, Git remotes or the saved site plan.
+The ZIP contains private site networking values, so the administrator must
+keep the downloaded file private. On a separate isolated test device, unzip
+it and run `python3 verify-recovery.py`. The CI includes an actual archive
+integrity verification and authenticated HTTP POST/download tests.
+
+**This is not a full Recovery/Backup deployment.** It has no actual NAS
+backup, disaster-restore capability or installed Ansible runtime yet. Those
+require permission-scoped job runners, NAS credentials, idempotent roles and
+a successful isolated restore before marking Stage 1/2 complete. Do not
+represent a downloaded ZIP as a verified backup or successful recovery.
+
 ## Stage-1 guided UI: first navigable end-to-end planning flow
 
 After the site-local configuration is saved, the actual HTTPS wizard now
