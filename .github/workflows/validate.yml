@@ -30,6 +30,7 @@ jobs:
         run: |
           bash -n bootstrap/bootstrap.sh
           bash -n bootstrap/launch.sh
+          bash -n bootstrap/installer-tui.sh
 
       - name: Python regression tests
         run: python -m pytest -q tests
