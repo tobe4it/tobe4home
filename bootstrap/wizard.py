@@ -10,6 +10,9 @@ import base64
 import binascii
 import collections
 import html
+import hashlib
+import io
+import zipfile
 import ipaddress
 import json
 import os
@@ -184,7 +187,8 @@ def render(plan: dict[str, str], csrf: str, error: str = "", saved: bool = False
             else '<p class="error">' + html.escape(error) + '</p>' if error else "")
     navigation = ('<nav aria-label="Installationsschritte"><strong>1. Einstellungen</strong> '
                   '<a href="/discovery">2. Bestandsaufnahme</a> '
-                  '<a href="/plan">3. Installationsplan</a></nav>'
+                  '<a href="/plan">3. Installationsplan</a>'
+           '<a href="/recovery">4. Recovery-Bootstrap</a></nav>'
                   if plan and not error else
                   '<nav aria-label="Installationsschritte"><strong>1. Einstellungen</strong>'
                   '<span>2. Bestandsaufnahme</span><span>3. Installationsplan</span></nav>')
@@ -288,7 +292,7 @@ dt{{font-weight:600}} dd{{margin:0;overflow-wrap:anywhere}}
 small{{color:gray}}
 </style></head><body>
 <header><h1>tobe4home – {html.escape(title)}</h1>
-<p>Schritt {step} von 3 – Geführte Einrichtung, ohne automatische Änderungen am Hypervisor.</p></header>
+<p>Schritt {step} – Geführte Einrichtung, ohne automatische Änderungen am Hypervisor.</p></header>
 {nav}
 {content}
 </body></html>"""
@@ -314,6 +318,100 @@ def render_discovery(plan: dict[str, str], facts: dict[str, str]) -> str:
                '<p><a href="/">Zurück zu den Einstellungen</a> · '
                '<a class="button" href="/plan">Weiter zum Installationsplan</a></p>')
     return flow_page("Bestandsaufnahme", 2, content)
+
+
+def recovery_bundle(plan: dict[str, str]) -> bytes:
+    """Portable Stage-1 recovery starter: one explicit operator export."""
+    validated = validate(plan)
+    site = {"schema_version": 1, "site": validated,
+            "deployment_enabled": False}
+    files = {
+        "site/site.local.json": (
+            json.dumps(site, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8"),
+        "ansible/inventory.yml": (
+            "all:\n  hosts:\n    setup-local:\n      ansible_connection: local\n"
+            "      ansible_python_interpreter: /usr/bin/python3\n"
+        ).encode("utf-8"),
+        "ansible/ansible.cfg": (
+            "[defaults]\ninventory = inventory.yml\n"
+            "retry_files_enabled = False\nhost_key_checking = True\n"
+        ).encode("utf-8"),
+        "ansible/playbooks/verify-local.yml": (
+            "---\n- name: Verify isolated local recovery runner\n"
+            "  hosts: setup-local\n  gather_facts: false\n  tasks:\n"
+            "    - name: Confirm local-only connection\n"
+            "      ansible.builtin.assert:\n        that:\n"
+            "          - ansible_connection == 'local'\n"
+            "        fail_msg: 'This starter playbook must run locally.'\n"
+        ).encode("utf-8"),
+        "README-RECOVERY.md": (
+            "# tobe4home – Recovery-Starterpaket (Entwicklungsstand)\n\n"
+            "Dieses Paket ist der erste exportierbare Recovery-Schritt.\n"
+            "Es enthält die lokal gespeicherte Site-Konfiguration,\n"
+            "ein sicheres Ansible-Lokalbeispiel und SHA-256-Prüfsummen.\n\n"
+            "## Nach dem Download (isolierter Testrechner)\n\n"
+            "1. ZIP in einen neuen, isolierten Ordner entpacken.\n"
+            "2. Befehl: python3 verify-recovery.py\n"
+            "3. Falls Ansible installiert ist: cd ansible\n"
+            "   und ansible-playbook playbooks/verify-local.yml\n"
+            "4. Site-Parameter kontrollieren, keine produktiven Deployments.\n\n"
+            "Grenzen: Kein NAS-Backup, kein VM-/LXC-Restore, keine\n"
+            "Proxmox-API-Zugangsdaten, keine privaten SSH-Schlüssel.\n"
+            "Die Auswahl NAS ist noch kein konfiguriertes Backupziel.\n"
+        ).encode("utf-8"),
+    }
+    checksums = "".join(
+        f"{hashlib.sha256(files[name]).hexdigest()}  {name}\n"
+        for name in sorted(files)
+    )
+    files["SHA256SUMS"] = checksums.encode("ascii")
+    files["verify-recovery.py"] = (
+        "from pathlib import Path\nimport hashlib\n"
+        "root = Path(__file__).resolve().parent\n"
+        "for line in (root / 'SHA256SUMS').read_text().splitlines():\n"
+        "    expected, relative = line.split('  ', 1)\n"
+        "    candidate = (root / relative).resolve()\n"
+        "    if not candidate.is_relative_to(root) or not candidate.is_file():\n"
+        "        raise SystemExit('FAIL: missing or unsafe recovery file')\n"
+        "    if hashlib.sha256(candidate.read_bytes()).hexdigest() != expected:\n"
+        "        raise SystemExit('FAIL: recovery checksum mismatch')\n"
+        "print('PASS: recovery starter files verified')\n"
+    ).encode("utf-8")
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for filename, data in sorted(files.items()):
+            item = zipfile.ZipInfo(filename, date_time=(2026, 1, 1, 0, 0, 0))
+            item.compress_type = zipfile.ZIP_DEFLATED
+            item.external_attr = (0o600 << 16)
+            archive.writestr(item, data)
+    payload = stream.getvalue()
+    if len(payload) > 256_000:
+        raise ValueError("Recovery export exceeds stage-1 size limit")
+    return payload
+
+
+def render_recovery(plan: dict[str, str], csrf: str) -> str:
+    name = html.escape(plan["site_label"], quote=True)
+    content = (
+        '<section><h2>Stage 1 – Recovery-Grundlage exportieren</h2>'
+        f'<p>Konfiguration: <strong>{name}</strong>. '
+        'Erzeuge ein eigenständiges ZIP mit Einstellungen, '
+        'Ansible-Grundgerüst, Prüfsummen und einer Anleitung '
+        'für einen isolierten Wiederherstellungstest.</p>'
+        '<p><strong>Tatsächliche Aktion:</strong> Die WebApp erzeugt '
+        'das Paket erst nach Freigabe im Arbeitsspeicher und '
+        'bietet es zum Download an. Keine Installation auf '
+        'Proxmox, kein NAS-Zugriff, keine Änderung bestehender Dienste.</p>'
+        '<p>Das ZIP enthält interne Konfigurationswerte. Sicher aufbewahren.</p>'
+        '<form method="post" action="/recovery/export">'
+        f'<input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">'
+        '<button type="submit" name="confirm" value="export-stage1">'
+        'Recovery-Starterpaket erstellen und herunterladen</button></form>'
+        '</section>'
+        '<p><a href="/plan">Zurück zum Installationsplan</a></p>'
+    )
+    return flow_page("Recovery-Bootstrap", 4, content)
 
 
 def render_plan(plan: dict[str, str]) -> str:
@@ -346,7 +444,7 @@ def render_plan(plan: dict[str, str]) -> str:
         "eingeschränkt berechtigten Proxmox-/Ansible-Ausführer. "
         "Die Einrichtung endet hier bewusst vor schreibenden Aktionen.</p>"
         '<p><a href="/discovery">Zurück zur Bestandsaufnahme</a> · '
-        '<a class="button" href="/">Einstellungen bearbeiten</a></p>'
+        '<a class="button" href="/recovery">Weiter: Recovery-Starterpaket erstellen</a></p>'
     )
     return flow_page("Installationsplan", 3, content)
 
@@ -421,7 +519,7 @@ def make_handler(state_path: Path, setup_code: str):
                 self._reply(200, render(load_plan(state_path), csrf,
                                         saved=self.path == "/saved",
                                         dns_suggestion=detect_network_dns()))
-            elif self.path in ("/discovery", "/plan"):
+            elif self.path in ("/discovery", "/plan", "/recovery"):
                 current_plan = load_plan(state_path)
                 if not current_plan:
                     self.send_response(303)
@@ -431,15 +529,17 @@ def make_handler(state_path: Path, setup_code: str):
                     return
                 if self.path == "/discovery":
                     self._reply(200, render_discovery(current_plan, discover_guest()))
-                else:
+                elif self.path == "/plan":
                     self._reply(200, render_plan(current_plan))
+                else:
+                    self._reply(200, render_recovery(current_plan, csrf))
             else:
                 self._reply(404, "Not found", "text/plain; charset=utf-8")
 
         def do_POST(self) -> None:
             if not self._require_auth():
                 return
-            if self.path != "/save":
+            if self.path not in ("/save", "/recovery/export"):
                 return self._reply(404, "Not found", "text/plain; charset=utf-8")
             length = int(self.headers.get("Content-Length", "0") or "0")
             if length < 1 or length > 16_384:
@@ -448,6 +548,29 @@ def make_handler(state_path: Path, setup_code: str):
                               keep_blank_values=True)
             if not secrets.compare_digest(params.get("csrf", [""])[0], csrf):
                 return self._reply(403, "Invalid request token", "text/plain; charset=utf-8")
+            if self.path == "/recovery/export":
+                if params.get("confirm", [""])[0] != "export-stage1":
+                    return self._reply(403, "Explicit export approval missing",
+                                       "text/plain; charset=utf-8")
+                existing = load_plan(state_path)
+                if not existing:
+                    return self._reply(409, "Save site configuration first",
+                                       "text/plain; charset=utf-8")
+                try:
+                    bundle = recovery_bundle(existing)
+                except (ValueError, OSError):
+                    return self._reply(500, "Recovery export failed",
+                                       "text/plain; charset=utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition",
+                                 'attachment; filename="tobe4home-stage1-recovery.zip"')
+                self.send_header("Content-Length", str(len(bundle)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(bundle)
+                return
             values = {key: params.get(key, [""])[0] for key in (
                 "site_label", "base_domain", "timezone", "dns_resolver", "backup_kind", "container_prefix")}
             try:
