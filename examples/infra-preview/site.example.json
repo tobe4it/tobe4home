@@ -1,0 +1,10 @@
+{
+  "prefix": "tb4h",
+  "node": "example-pve",
+  "storage": "local-zfs",
+  "bridge": "vmbr3",
+  "template": "local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz",
+  "dns_resolver": "192.0.2.53",
+  "vmid_from": 1002,
+  "vmid_to": 1099
+}
