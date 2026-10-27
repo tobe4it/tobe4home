@@ -5,7 +5,7 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-VMID="" TEMPLATE="" STORAGE="" BRIDGE="" SSH_KEY="" APPLY=0
+VMID="" TEMPLATE="auto" TEMPLATE_STORAGE="local" STORAGE="" BRIDGE="" VLAN_TAG="" SSH_KEY="" APPLY=0
 HOSTNAME="tobe4home-setup"
 MEMORY=1024 CORES=1 DISK=8 PORT=8765
 
@@ -14,23 +14,29 @@ usage() {
 tobe4home stage-0 bootstrap (Proxmox VE host)
 
 Usage:
-  bash bootstrap/bootstrap.sh --vmid ID --template STORAGE:vztmpl/FILE \
-    --storage STORAGE --bridge BRIDGE --ssh-public-key /path/to/key.pub [--apply]
+  bash bootstrap/bootstrap.sh --vmid ID --storage ROOTFS_STORAGE \
+    --ssh-public-key /path/to/key.pub [--template-storage local] \
+    [--template auto|STORAGE:vztmpl/FILE] [--bridge vmbrN] \
+    [--vlan-tag 1..4094] [--apply]
+
+The official Rocky Linux 10 template is automatically discovered and, after
+--apply, downloaded if missing. Omit --bridge for interactive bridge/VLAN choice.
 
 Without --apply this is a read-only validation and plan.
 --apply creates ONE new unprivileged LXC, installs Python/SSH and starts
 the local-only setup web application. It never edits an existing VM/CT.
-The OS template must already be present on a Proxmox template storage.
+The template is obtained only from the official Proxmox pveam catalog.
 EOF
 }
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 while (($#)); do
   case "$1" in
-    --vmid|--template|--storage|--bridge|--ssh-public-key)
+    --vmid|--template|--template-storage|--storage|--bridge|--vlan-tag|--ssh-public-key)
       (($# >= 2)) || die "Missing value for $1"
       case "$1" in
         --vmid) VMID="$2" ;; --template) TEMPLATE="$2" ;;
+        --template-storage) TEMPLATE_STORAGE="$2" ;; --vlan-tag) VLAN_TAG="$2" ;;
         --storage) STORAGE="$2" ;; --bridge) BRIDGE="$2" ;;
         --ssh-public-key) SSH_KEY="$2" ;;
       esac
@@ -42,43 +48,104 @@ while (($#)); do
 done
 
 [[ $EUID -eq 0 ]] || die "Run as root on the Proxmox VE node"
-for cmd in pct pvesm pvesh ip python3; do
+for cmd in pct pvesm pvesh pveam ip python3; do
   command -v "$cmd" >/dev/null || die "Missing required command: $cmd"
 done
 [[ "$VMID" =~ ^[1-9][0-9]{2,8}$ ]] || die "Invalid VMID"
-[[ "$TEMPLATE" =~ ^[a-zA-Z0-9_.-]+:vztmpl/[a-zA-Z0-9_.-]+$ ]] ||
-  die "Template must be a storage volume such as local:vztmpl/rockylinux-10-....tar.zst"
-[[ "$TEMPLATE" =~ :vztmpl/(rockylinux|almalinux)-(9|10)[a-zA-Z0-9_.-]*\.tar\.(gz|xz|zst)$ ]] ||
-  die "Only predownloaded Rocky/AlmaLinux 9/10 LXC templates are accepted"
+[[ "$TEMPLATE_STORAGE" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Invalid template storage"
 [[ "$STORAGE" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Invalid rootfs storage identifier"
-[[ "$BRIDGE" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Invalid bridge name"
+[[ -f "$SCRIPT_DIR/networks.py" ]] || die "Missing read-only network selection module"
+if [[ "$TEMPLATE" != auto ]]; then
+  [[ "$TEMPLATE" =~ ^[a-zA-Z0-9_.-]+:vztmpl/[a-zA-Z0-9_.-]+$ ]] ||
+    die "Template must be STORAGE:vztmpl/FILE or auto"
+  [[ "$TEMPLATE" =~ :vztmpl/(rockylinux|almalinux)-(9|10)[a-zA-Z0-9_.-]*\.tar\.(gz|xz|zst)$ ]] ||
+    die "Only Rocky/Alma Linux 9/10 template filenames are accepted"
+  TEMPLATE_STORAGE="${TEMPLATE%%:vztmpl/*}"
+else
+  # pveam available is read-only and uses the locally cached official catalog.
+  CATALOG="$(pveam available --section system)" || die "Cannot read official Proxmox template catalog"
+  TEMPLATE_FILE="$(printf '%s\n' "$CATALOG" |
+    awk '$1 == "system" && $2 ~ /^rockylinux-10-default_[0-9]+_amd64\.tar\.(xz|zst|gz)$/ {print $2}' |
+    LC_ALL=C sort | tail -n 1)"
+  [[ -n "$TEMPLATE_FILE" ]] || die "No official Rocky Linux 10 template in catalog"
+  TEMPLATE="${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_FILE}"
+fi
+
+if [[ -z "$BRIDGE" ]]; then
+  [[ -z "$VLAN_TAG" ]] || die "Select a bridge when specifying --vlan-tag"
+  [[ -t 0 ]] || die "No bridge selected; pass --bridge on noninteractive sessions"
+  echo "Network selection (read-only discovery; no automatic VLAN recommendation):"
+  NETWORK_SELECTION="$(python3 "$SCRIPT_DIR/networks.py" --select)" ||
+    die "Network selection cancelled or invalid"
+  read -r BRIDGE VLAN_SELECTION <<< "$NETWORK_SELECTION"
+  [[ "$VLAN_SELECTION" == "-" ]] || VLAN_TAG="$VLAN_SELECTION"
+fi
+[[ "$BRIDGE" =~ ^vmbr[0-9]+$ ]] || die "Invalid Proxmox bridge name"
+if [[ -n "$VLAN_TAG" ]]; then
+  [[ "$VLAN_TAG" =~ ^[1-9][0-9]{0,3}$ ]] || die "Invalid VLAN tag"
+  (( VLAN_TAG >= 1 && VLAN_TAG <= 4094 )) || die "VLAN tag must be 1..4094"
+  python3 "$SCRIPT_DIR/networks.py" --validate "$BRIDGE" --tag "$VLAN_TAG" ||
+    die "Bridge/VLAN pairing not verified"
+else
+  python3 "$SCRIPT_DIR/networks.py" --validate "$BRIDGE" ||
+    die "Bridge not verified"
+fi
 [[ -f "$SSH_KEY" && -r "$SSH_KEY" ]] || die "SSH public key not readable"
 [[ "$(wc -l < "$SSH_KEY")" -eq 1 ]] || die "Use a single public key"
 grep -Eq '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) [A-Za-z0-9+/=]+( .*)?$' "$SSH_KEY" ||
   die "Invalid SSH public key"
 [[ -f "$SCRIPT_DIR/wizard.py" && -f "$SCRIPT_DIR/wizard.service" && -f "$SCRIPT_DIR/sshd.conf" ]] ||
   die "Incomplete bootstrap checkout"
-ip link show dev "$BRIDGE" >/dev/null 2>&1 || die "Network bridge does not exist"
+# The selected template must be present in the catalog OR already cached.
+TEMPLATE_FILE="${TEMPLATE#*:vztmpl/}"
 TEMPLATE_PATH="$(pvesm path "$TEMPLATE")" || die "Unable to resolve template storage path"
-[[ -f "$TEMPLATE_PATH" ]] || die "Template archive not found: $TEMPLATE"
+if [[ ! -s "$TEMPLATE_PATH" ]]; then
+  CATALOG="${CATALOG:-$(pveam available --section system)}" ||
+    die "Cannot read official Proxmox template catalog"
+  printf '%s\n' "$CATALOG" | awk '$1 == "system" {print $2}' |
+    grep -Fxq -- "$TEMPLATE_FILE" ||
+    die "Template not cached and not in official pveam catalog"
+fi
 RESOURCES="$(pvesh get /cluster/resources --type vm --output-format json)" ||
   die "Unable to inspect cluster VMIDs (refusing to proceed)"
 VMID_USED="$(python3 -c 'import json,sys; target=int(sys.argv[1]); print(int(any(int(r.get("vmid",-1))==target for r in json.load(sys.stdin))))' "$VMID" <<< "$RESOURCES")" ||
   die "Unable to parse cluster VMIDs"
 [[ "$VMID_USED" == 0 ]] || die "VMID already allocated in Proxmox cluster"
-printf 'Stage-0 preflight: PASS\nVMID: %s\nOS template: %s\nStorage: %s\nBridge: %s\n' \
-  "$VMID" "$TEMPLATE" "$STORAGE" "$BRIDGE"
+printf 'Stage-0 preflight: PASS\nVMID: %s\nOS template: %s\nCached: %s\nRootfs: %s\nBridge: %s\nVLAN: %s\n' \
+  "$VMID" "$TEMPLATE" "$([[ -s "$TEMPLATE_PATH" ]] && echo yes || echo no)" \
+  "$STORAGE" "$BRIDGE" "${VLAN_TAG:-untagged}"
 if ((APPLY == 0)); then
   echo "DRY RUN: no resources changed. Add --apply to create the setup LXC."
   exit 0
 fi
 
+if [[ ! -s "$TEMPLATE_PATH" ]]; then
+  echo "Updating official Proxmox template catalog (approved apply phase)..."
+  pveam update || die "Failed to refresh official template catalog"
+  pveam available --section system | awk '$1 == "system" {print $2}' |
+    grep -Fxq -- "$TEMPLATE_FILE" ||
+    die "Requested template disappeared from official catalog"
+  echo "Downloading verified catalog template $TEMPLATE_FILE to $TEMPLATE_STORAGE..."
+  pveam download "$TEMPLATE_STORAGE" "$TEMPLATE_FILE" ||
+    die "Template download failed; no CT created"
+  [[ -s "$TEMPLATE_PATH" ]] || die "Downloaded template not readable; no CT created"
+fi
+# Recheck occupancy after download, as it may take time.
+RESOURCES="$(pvesh get /cluster/resources --type vm --output-format json)" ||
+  die "Cannot recheck cluster VMIDs"
+VMID_USED="$(python3 -c 'import json,sys; target=int(sys.argv[1]); print(int(any(int(r.get("vmid",-1))==target for r in json.load(sys.stdin))))' "$VMID" <<< "$RESOURCES")" ||
+  die "Cannot recheck VMIDs"
+[[ "$VMID_USED" == 0 ]] || die "VMID was allocated during download"
+python3 "$SCRIPT_DIR/networks.py" --validate "$BRIDGE" ${VLAN_TAG:+--tag "$VLAN_TAG"} ||
+  die "Selected bridge/VLAN changed during download"
+NETWORK_ARGS="name=eth0,bridge=${BRIDGE},ip=dhcp,firewall=1"
+[[ -z "$VLAN_TAG" ]] || NETWORK_ARGS+=",tag=${VLAN_TAG}"
 echo "Creating a NEW unprivileged, non-autostarting LXC..."
 pct create "$VMID" "$TEMPLATE" \
   --hostname "$HOSTNAME" --unprivileged 1 --onboot 0 \
   --memory "$MEMORY" --cores "$CORES" --swap 256 \
   --rootfs "${STORAGE}:${DISK}" \
-  --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp,firewall=1" \
+  --net0 "$NETWORK_ARGS" \
   --tags "tobe4home;bootstrap" \
   --description "tobe4home stage-0 setup wizard; no production deployment"
 echo "Created CT $VMID. Failures after this point leave it intact for diagnosis."
