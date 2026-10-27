@@ -151,7 +151,57 @@ Freigabe gilt niemals pauschal für beliebige zukünftige Prompt-Ausgaben.
 Installation vorhanden war. Ein optionaler Recovery-Export bleibt im Menü
 »Werkzeuge«, nicht auf dem Hauptpfad.
 
-## 6. Liefergates (noch offen)
+## 6. Erster umsetzbarer Bereitstellungsschritt (Entwicklung)
+
+`bootstrap/deploy-ansible-controller.sh` ist ein **ausführbarer,
+eng eingegrenzter Host-Bootstrap** für den ersten Ansible-Controller-Gast.
+Er läuft explizit auf dem Proxmox-Host, nicht im unprivilegierten Setup-LXC.
+Das ist eine bewusste Zwischenstufe, **noch nicht** das spätere
+vollständig webgesteuerte Deployment. Der Befehl erfordert eine
+Betreiberentscheidung und einen zweiten wortgetreuen Bestätigungsschritt.
+
+### Vorbereitung / read-only Plan
+
+Auf dem Proxmox-Host, nach Prüfung des Branch-Commits:
+
+```bash
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo bash -n /root/tobe4home-bootstrap/bootstrap/deploy-ansible-controller.sh
+sudo bash /root/tobe4home-bootstrap/bootstrap/deploy-ansible-controller.sh \
+  --bridge=<betreibergeprüfte-bridge> --storage=<rootdir-storage>
+```
+
+Der Plan nutzt den bereits offiziell geladenen Rocky-10-LXC-Template-Namen
+und prüft vor jeder Änderung u. a. VMID 1001 clusterweit, ZFS-/Storage-
+Restbestände, aktives RootFS-Storage, Host-Bridge sowie unprivilegierte
+UID/GID-Zuordnung. Der Operator entscheidet ausdrücklich über
+`--apply` und die exakte Eingabe `DEPLOY 1001`.
+
+### Ausführung und Abnahme
+
+```bash
+sudo bash /root/tobe4home-bootstrap/bootstrap/deploy-ansible-controller.sh \
+  --bridge=<betreibergeprüfte-bridge> --storage=<rootdir-storage> --apply
+sudo pct config 1001
+sudo pct exec 1001 -- ansible --version
+```
+
+Die Anwendung erstellt ausschließlich CT 1001 mit Proxmox-`pct create`,
+startet den neuen Container und installiert `ansible-core`, `git`,
+OpenSSH und Python. **Kein Restore, kein automatisches Löschen, kein
+Zugriff auf bestehende Container und keine Installation von Forgejo.**
+Bei Fehlern bleibt der Teilzustand zur Diagnose stehen und ein erneuter
+Versuch wird blockiert, statt vorhandene Volumes zu überschreiben.
+Die Freigabe erfolgt auf dem Proxmox-Terminal, nicht über die WebApp.
+
+Die WebApp verlinkt vom Installationsplan auf einen konkreten
+Infrastruktur-Bereitstellungsbildschirm; noch ohne Schreibzugriff auf
+Proxmox. Als **nächster** Schritt wird ein begrenzt berechtigter, explizit
+autorisierter Proxmox-API-Executor für echte Webfreigaben benötigt.
+Keine API-Tokens im öffentlichen Repository, keine `root@pam`-Tokens
+und keine generierten Agentenbefehle unmittelbar am Hypervisor ausführen.
+
+## 7. Liefergates (noch offen)
 
 - [ ] Formulare / versioniertes Schema für alle tatsächlich benötigten
       Infrastrukturrollen und Modi; keine fest codierten lokalen Netzdaten.
