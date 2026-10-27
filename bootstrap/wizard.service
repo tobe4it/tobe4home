@@ -7,6 +7,7 @@ Type=simple
 User=tobe4home
 Group=tobe4home
 WorkingDirectory=/opt/tobe4home
+EnvironmentFile=-/etc/tobe4home/bootstrap.env
 ExecStart=/usr/bin/python3 /opt/tobe4home/wizard.py --listen 127.0.0.1 --port 8765 --state-file /var/lib/tobe4home/site.local.json
 Restart=on-failure
 RestartSec=3
