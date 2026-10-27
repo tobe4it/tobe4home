@@ -188,6 +188,58 @@ else
   msg "VLAN" "$BRIDGE ist nicht VLAN-aware; es wird ungetaggt angeschlossen."
 fi
 
+# The bridge name, VLAN number and Proxmox host default route cannot prove
+# the security role of a guest network. Ask the operator to classify the
+# SELECTED network. This is advisory only, never network policy enforcement.
+NETWORK_ROLE="$(menu "Schritt 4/5 – Netzwerkrolle" \
+  "Welche Funktion hat das gewählte Netz ($BRIDGE, VLAN ${VLAN:-ungetaggt})?
+
+EMPFEHLUNG: Intern/Infrastruktur, erreichbar von einem
+autorisierten Administrationsgerät. Nicht öffentlich exponieren.
+Diese Einordnung ist manuell und nicht technisch überprüft." \
+  "intern" "Intern / Infrastruktur – empfohlen" \
+  "management" "Proxmox-Verwaltung – nur mit strenger Trennung" \
+  "iot" "IoT – für die Setup-Verwaltung ungeeignet" \
+  "dmz" "DMZ – nicht für Stage-0 empfohlen" \
+  "other" "Andere / unbekannte Netzwerkrolle")" || cancel
+
+if [[ "$NETWORK_ROLE" != "intern" ]]; then
+  case "$NETWORK_ROLE" in
+    management)
+      RISK_MESSAGE="Verwaltungsnetz gewählt. Der Setup-LXC benötigt keinen freien
+Zugriff auf die Proxmox-Management-Oberfläche.
+Prüfe getrennte Berechtigungen und Firewall-Regeln." ;;
+    iot)
+      RISK_MESSAGE="IoT-Netz gewählt. Dieses ist häufig für Geräte und nicht
+für Administrationsarbeitsplätze erreichbar.
+Das interne Management kann fehlschlagen." ;;
+    dmz)
+      RISK_MESSAGE="DMZ gewählt. Der Setup-Wizard darf nicht ins Internet
+exponiert werden. Für Stage-0 ist ein internes Netz vorzuziehen." ;;
+    *)
+      RISK_MESSAGE="Unbekannte Netzrolle. Erreichbarkeit und Sicherheitsgrenzen
+sind vor der Installation manuell zu prüfen." ;;
+  esac
+  question "Netzwerkempfehlung / Risiko" "$RISK_MESSAGE
+
+Wichtiger Hinweis: Die WebApp lauscht derzeit nur auf
+127.0.0.1 IM GAST und ist aus dem LAN ausschließlich
+über einen freigegebenen SSH-Tunnel erreichbar.
+
+Trotz Warnung mit dieser Netzwerkrolle fortfahren?" || cancel
+fi
+msg "Interner Administrationszugriff" \
+  "Netzklassifikation: $NETWORK_ROLE (nicht automatisch verifiziert)
+
+Für den anschließenden Zugriff erforderlich:
+- Administrations-PC darf den LXC per SSH erreichen,
+  direkt oder über eine freigegebene Jump-Host-Verbindung.
+- DHCP, DNS und Paketquellen müssen erreichbar sein.
+- Die WebApp ist derzeit NICHT direkt per HTTP im LAN erreichbar.
+  Zugriff nur über den geschützten SSH-Tunnel.
+
+Der Bootstrap prüft diese Verbindungen noch nicht aktiv."
+
 KEY_SUGGESTION="/root/.ssh/id_ed25519.pub"
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
   USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
@@ -227,6 +279,8 @@ Betriebssystem: Rocky Linux 10
 RootFS:         $STORAGE
 Bridge:         $BRIDGE
 VLAN:           $VLAN_LABEL
+Netzrolle:      $NETWORK_ROLE (Betreiberangabe)
+WebApp:         nur über SSH-Tunnel
 SSH-Key:        $KEY
 
 Template wird bei Bedarf von Proxmox heruntergeladen.
