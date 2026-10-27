@@ -15,6 +15,7 @@ GOOD = {
     "timezone": "Europe/Berlin",
     "dns_resolver": "192.0.2.53",
     "backup_kind": "nas",
+    "container_prefix": "tobe4home",
 }
 
 class WizardTests(unittest.TestCase):
@@ -34,6 +35,22 @@ class WizardTests(unittest.TestCase):
                 payload = dict(GOOD, **{k: value})
                 with self.assertRaises(ValueError):
                     wizard.validate(payload)
+
+    def test_custom_container_prefix(self):
+        values = dict(GOOD, container_prefix="familienhaus-")
+        self.assertEqual(wizard.validate(values)["container_prefix"], "familienhaus")
+        self.assertEqual(wizard.normalized_prefix("lab-"), "lab")
+        self.assertEqual(wizard.normalized_prefix("x"), "x")
+        for invalid in ("", "-bad", "Bad", "my_prefix", "a..b", "z" * 58):
+            with self.subTest(value=invalid):
+                with self.assertRaises(ValueError):
+                    wizard.normalized_prefix(invalid)
+
+    def test_prefix_is_in_local_wizard(self):
+        page = wizard.render(GOOD, "token")
+        self.assertIn('name="container_prefix"', page)
+        self.assertIn('value="tobe4home"', page)
+        self.assertIn("VMIDs are independent", page)
 
     def test_output_escapes_rendered_input(self):
         payload = dict(GOOD, site_label='<script>alert(1)</script>')
