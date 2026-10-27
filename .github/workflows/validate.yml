@@ -38,5 +38,10 @@ jobs:
       - name: AnsibleForms preview playbook syntax
         run: ansible-playbook -i localhost, ansibleforms/playbooks/tb4h-preview.yml --syntax-check
 
+      - name: Run AnsibleForms preview end-to-end against synthetic inventory
+        run: |
+          ansible-playbook -i localhost, ansibleforms/playbooks/tb4h-preview.yml \
+            -e '{"git":"new","agent":"new","model":"existing","ci":"new"}'
+
       - name: Bilingual handbook and blank recovery PDFs
         run: python scripts/check_handbook.py
