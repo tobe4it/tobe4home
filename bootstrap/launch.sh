@@ -22,6 +22,22 @@ for cmd in git pct pvesh pvesm pveam python3 find; do
   command -v "$cmd" >/dev/null || fail "Missing required command: $cmd"
 done
 
+# Debian-installer-style dialogs whenever whiptail is already present.
+# Do not change the Proxmox host or install extra packages implicitly.
+# TOBE4HOME_INSTALLER_UI=text forces the existing portable terminal prompts.
+if [[ "${TOBE4HOME_INSTALLER_UI:-auto}" != text ]]; then
+  if command -v whiptail >/dev/null 2>&1 && [[ "${TERM:-dumb}" != dumb ]]; then
+    [[ -r "$ROOT/bootstrap/installer-tui.sh" ]] ||
+      fail "Text UI source is missing in checkout"
+    exec bash "$ROOT/bootstrap/installer-tui.sh"
+  elif [[ "${TOBE4HOME_INSTALLER_UI:-auto}" == whiptail ]]; then
+    fail "whiptail unavailable (or TERM=dumb); use a capable terminal or text fallback"
+  else
+    printf '%s\n' 'Hinweis: whiptail ist nicht installiert – einfacher Textdialog wird verwendet.' >&2
+    printf '%s\n' 'Für den Debian-ähnlichen Konsoleninstaller: apt install whiptail (nur nach eigener Freigabe).' >&2
+  fi
+fi
+
 cat <<'EOF'
 tobe4home | Guided Proxmox bootstrap (stage 0)
 
