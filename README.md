@@ -47,7 +47,15 @@ git clone --depth 1 --branch feat/bootstrap-setup-wizard-20261027 https://github
 ```
 
 This clones version-controlled installer files and starts a guided host-side
-session. It proposes an unused VMID (preferably 1000), editable hostname
+session. When `whiptail` is already installed on Proxmox, the installer opens
+a **Debian-style text-mode setup interface** (dialog boxes and selection menus).
+Otherwise it uses a simple command-line fallback without installing packages
+on the host. To enable dialogs explicitly on Proxmox, first review and install
+the optional host package `whiptail` with `apt install whiptail`, then run
+`bash /root/tobe4home-bootstrap/bootstrap/launch.sh` again.
+To force the fallback, set `TOBE4HOME_INSTALLER_UI=text`.
+An invalid underscore in the host prefix (e.g. `tb4h_`) prompts a validated
+replacement suggestion (`tb4h-`), rather than aborting the entire setup. It proposes an unused VMID (preferably 1000), editable hostname
 prefix, rootfs storage, bridge/VLAN and a public SSH key. It detects the Rocky
 Linux 10 system template, prints a **read-only plan**, and creates a single
 unprivileged setup LXC **only after** the explicit `INSTALL <VMID>` approval.
