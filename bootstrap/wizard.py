@@ -36,12 +36,12 @@ def normalized_prefix(raw: str) -> str:
 
 PHASES = (
     ("00", "Proxmox und Netzwerk", "Stage-0-LXC mit internem HTTPS-Zugang"),
-    ("01", "Recovery bootstrap", "Git checkout, SSH, Ansible, local secrets, offline recovery"),
-    ("02", "Recovery and backups", "Independent backup target and a verified restore"),
-    ("03", "Internal Git and CI", "Forgejo LTS, isolated runners, protected changes"),
-    ("04", "Identity and reverse proxy", "OIDC, TLS and per-user authorization"),
-    ("05", "Local AI development", "Local LLM, isolated coding agent and tool gateway"),
-    ("06", "Workflow services", "Langflow, MCP and selectable service blueprints"),
+    ("01", "Wiederherstellbarer Bootstrap", "Git, SSH, Ansible und unabhängige Recovery"),
+    ("02", "Backup und Wiederherstellung", "Unabhängiges Backup-Ziel und geprüfter Restore"),
+    ("03", "Interne Git-Plattform", "Forgejo LTS und isolierte CI-Runner"),
+    ("04", "Identität und Reverse-Proxy", "OIDC, TLS und Benutzerberechtigungen"),
+    ("05", "Lokale KI-Entwicklung", "LLM, isolierte Coding-Agenten und Tool-Gateway"),
+    ("06", "Workflows und weitere Dienste", "Langflow, MCP und wählbare Dienstvorlagen"),
 )
 LABEL_RE = re.compile(r"^[\w .-]{2,64}$", flags=re.UNICODE)
 DOMAIN_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")
