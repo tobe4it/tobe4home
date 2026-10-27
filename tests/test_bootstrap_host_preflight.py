@@ -81,6 +81,10 @@ nfs: backup
         self.assertIn('https://$GUEST_IP:$PORT/', script)
         self.assertIn('SETUP CODE: $SETUP_CODE', script)
         self.assertIn('ssh-keygen -lf "$SSH_KEY"', script)
+        self.assertIn('umask 022', script)
+        self.assertIn('pct create "$VMID" "$TEMPLATE"', script)
+        self.assertIn('SETUP_CODE="$(python3 -c', script)
+        self.assertIn('subjectAltName=IP:$GUEST_IP', script)
         self.assertNotIn('http://127.0.0.1:8765/health', script)
 
 
