@@ -151,7 +151,72 @@ Freigabe gilt niemals pauschal für beliebige zukünftige Prompt-Ausgaben.
 Installation vorhanden war. Ein optionaler Recovery-Export bleibt im Menü
 »Werkzeuge«, nicht auf dem Hauptpfad.
 
-## 6. Erster umsetzbarer Bereitstellungsschritt (Entwicklung)
+## 6. Durchgängiger Bootstrap-Handoff und bedarfsabhängige Topologie
+
+**Verbindlicher Nutzerablauf:** Einmaliges Bootstrap auf dem Proxmox-Host
+erstellt CT 1000 und liefert die HTTPS-Webadresse. Ab dann erfolgt die
+weitere Neuinstallation vollständig über CT 1000: Site-Parameter erfassen,
+Discovery durchführen, den geplanten Minimalbestand an Gästen zeigen,
+**genau diesen Bestand einmalig bestätigen**, alle genehmigten Gäste
+installieren und die Ergebnisse/Fehler/Wiederaufnahme in der WebApp anzeigen.
+
+Der initiale Shellprozess wartet **nicht** über die gesamte Browser-Sitzung
+hinweg; er beendet sich nach Stage 0. Ein persistenter Jobstatus in CT 1000
+und eine eng berechtigte, ausdrücklich autorisierte Proxmox-
+Bootstrap-Identität gewährleisten die kontrollierte Fortsetzung.
+
+**Provisionierungsabfolge**:
+1. WebApp: read-only Proxmox-Discovery (VMIDs, Ressourcen, Storage,
+   Templates, Bridges, DNS- und DHCP-Herkunft).
+2. WebApp: Moduswahl für Git (bestehend/neu), Coding-Agent (lokal/extern),
+   Inferenz (existierender API-Endpunkt/lokaler Gast) und CI-Isolation.
+3. Plan-Compiler: berechnet eine **Minimal-Topologie** mit nachvollziehbaren
+   Abhängigkeiten; prüft freie Ressourcen und ggf. nötige Linux-VM statt LXC.
+4. Einmalige Operatorfreigabe für die exakte Planrevision und erlaubten
+   Ziele/Aktionen. Spätere Planänderungen erfordern eine neue Freigabe.
+5. Bootstrap-Executor: erzeugt 1001 und richtet DNS/Netzwerk sowie Ansible
+   ein; **erst nach erfolgreicher lokaler Ansible- und Connectivity-Prüfung**
+   schaltet der Ablauf auf Controller-Provisionierung um.
+6. Controller 1001: installiert die **im bestätigten Plan** enthaltenen
+   weiteren benötigten Git-/Agent-/CI-/Modell-Gäste automatisiert über
+   eingeschränkte Ansible-/Proxmox-API-Operationen. Keine weiteren
+   Freigabedialoge für bereits genehmigte einzelne Aktionen, aber
+   harte Grenzen für VMIDs, Netze, Images, Ressourcen und Task-Arten.
+7. Healthchecks, eventuelle Fehler und sichere Wiederaufnahme bleiben
+   in CT 1000 sichtbar; keine stillen Containerlöschungen oder
+   Entsperrung unautorisierter Maßnahmen.
+8. Das Ergebnis ist die minimal einsatzfähige Prompt-/Git-/Ansible-
+   Plattform. Weitere promptgenerierte Deployments benötigen **eine
+   eigene Review- und Freigabegrenze** pro Änderungsrevision.
+
+**Wann sind CT 1002–1004 nötig?** Nicht pauschal. Die Rollen sind
+konfigurierbar und die VMIDs dynamisch:
+- Git/Forgejo-LXC nur, wenn kein zugelassener vorhandener Git-Dienst
+  genutzt werden soll und die selbstständige lokale GitOps-Plattform
+  benötigt wird.
+- Agent-/Sandbox-Gast, wenn lokale Prompt→Ansible-Codegenerierung Teil des
+  gewählten Installationsmodus ist; Sicherheitsgrenzen können stattdessen
+  eine isolierte VM verlangen.
+- Inferenz-Gast nur bei gewünschter lokaler Inferenz **und** fehlendem
+  autorisierten passenden Modell-Endpunkt; CPU/RAM/GPU-Fähigkeiten
+  entscheiden über VM/LXC und Ressourcen.
+- Separater CI-Runner/Job-Gast je nach Isolation, Anzahl paralleler
+  Tests und vorhandenem Runner; kein gemeinsamer privilegierter
+  Agent-/Deploy-Kontext.
+
+**Kein Blankoscheck:** »Ohne weitere Aufforderung« bedeutet
+*innerhalb der vorher freigegebenen Topologie* automatisch installieren,
+nicht beliebige neue LXCs anlegen. Die WebApp und der Coding-Agent
+erhalten keinen generellen Proxmox-root-Zugang. Neuplanung oder
+Zielerweiterung erfordern eine neue Betreiberfreigabe.
+
+**Realtest-Hinweis:** CT 1001 wurde auf dem Test-Proxmox erstellt, aber
+der Paketdownload scheiterte zunächst an DNS. Ein idempotenter Resume
+mit korrekt aus den Site-Daten übernommener DNS-Konfiguration ist
+Voraussetzung für den späteren automatischen Handoff. Bestehenden
+CT 1001 **nicht** durch erneutes `pct create` überschreiben.
+
+## 7. Erster umsetzbarer Bereitstellungsschritt (Entwicklung)
 
 `bootstrap/deploy-ansible-controller.sh` ist ein **ausführbarer,
 eng eingegrenzter Host-Bootstrap** für den ersten Ansible-Controller-Gast.
@@ -247,7 +312,7 @@ autorisierter Proxmox-API-Executor für echte Webfreigaben benötigt.
 Keine API-Tokens im öffentlichen Repository, keine `root@pam`-Tokens
 und keine generierten Agentenbefehle unmittelbar am Hypervisor ausführen.
 
-## 7. Liefergates (noch offen)
+## 8. Liefergates (noch offen)
 
 - [ ] Formulare / versioniertes Schema für alle tatsächlich benötigten
       Infrastrukturrollen und Modi; keine fest codierten lokalen Netzdaten.
