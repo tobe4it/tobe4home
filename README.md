@@ -35,6 +35,32 @@ English and German setup and operations documentation is available under `docs/`
 
 ## Guided installation (experimental)
 
+**Start from an existing Proxmox VE host** with root shell access, Git,
+an SSH public key whose private counterpart is on your admin workstation,
+and a functioning network.
+
+For the **unmerged development prototype only** (PR #1), the single entry
+command is:
+
+```bash
+git clone --depth 1 --branch feat/bootstrap-setup-wizard-20261027 https://github.com/tobe4it/tobe4home.git /root/tobe4home-bootstrap && bash /root/tobe4home-bootstrap/bootstrap/launch.sh
+```
+
+This clones version-controlled installer files and starts a guided host-side
+session. It proposes an unused VMID (preferably 1000), editable hostname
+prefix, rootfs storage, bridge/VLAN and a public SSH key. It detects the Rocky
+Linux 10 system template, prints a **read-only plan**, and creates a single
+unprivileged setup LXC **only after** the explicit `INSTALL <VMID>` approval.
+It does not perform a `curl | bash` remote-code execution.
+
+**Security:** This is not a released installer. Review the code and the exact
+Git commit before running it as root; the development branch is mutable.
+Do not execute on production until the Proxmox acceptance tests in PR #1
+have passed. After review and release, the entry command will be switched
+to a pinned, verified stable release (not a moving feature branch).
+If `/root/tobe4home-bootstrap` already exists, do not overwrite it:
+review it and run `bash /root/tobe4home-bootstrap/bootstrap/launch.sh`.
+
 The future installation entry point starts **on a prepared Proxmox VE host**:
 a preflighted script creates a dedicated, unprivileged Rocky/AlmaLinux LXC
 and starts a localhost-only, SSH-tunneled setup wizard. The wizard currently
