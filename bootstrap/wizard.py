@@ -414,6 +414,39 @@ def render_recovery(plan: dict[str, str], csrf: str) -> str:
     return flow_page("Recovery-Bootstrap", 4, content)
 
 
+def render_infrastructure(plan: dict[str, str]) -> str:
+    """Honest installation handoff, no server-side hypervisor privileges."""
+    content = (
+        "<section><h2>Stage 1 – Ersten Ansible-Controller installieren</h2>"
+        "<p>Die benötigte Controller-Rolle soll in einen separaten "
+        "unprivilegierten Rocky-Linux-10-LXC (vorgeschlagen: 1001). "
+        "Der Installer prüft zunächst RootFS-Storage, Cluster-VMID, "
+        "Bridge, Rocky-Template und UID/GID-Mapping.</p>"
+        "<p>Da die WebApp noch keine delegierte Proxmox-API-Berechtigung "
+        "hat, muss die erste Provisionierung bewusst am Proxmox-Host "
+        "freigegeben werden. Sie erfolgt nicht heimlich durch die WebApp.</p>"
+        "<h3>1. Branch auf dem Proxmox-Host aktualisieren</h3>"
+        "<pre>sudo git -C /root/tobe4home-bootstrap pull --ff-only</pre>"
+        "<h3>2. Read-only-Vorschau starten</h3>"
+        "<pre>sudo bash /root/tobe4home-bootstrap/bootstrap/"
+        "deploy-ansible-controller.sh --bridge=BRIDGE --storage=STORAGE</pre>"
+        "<p>BRIDGE und STORAGE durch die im Stage-0-Bootstrap "
+        "gewählten echten Werte ersetzen.</p>"
+        "<h3>3. Ersten LXC nach Prüfung freigeben</h3>"
+        "<pre>sudo bash /root/tobe4home-bootstrap/bootstrap/"
+        "deploy-ansible-controller.sh --bridge=BRIDGE --storage=STORAGE --apply</pre>"
+        "<p>Der Host fordert nochmals die exakte Eingabe "
+        "<code>DEPLOY 1001</code>. Es wird nur ein LXC angelegt; "
+        "bei einem Fehler bleiben seine Artefakte zur Diagnose bestehen. "
+        "Der Controller erhält Ansible-Pakete, aber noch keine "
+        "Deploy-Zugangsdaten. Git-, Prompt- und Agent-Rollen "
+        "folgen erst nach weiteren Freigaben.</p>"
+        "</section>"
+        '<p><a href="/plan">Zurück zum Plan</a></p>'
+    )
+    return flow_page("Infrastruktur bereitstellen", 4, content)
+
+
 def render_plan(plan: dict[str, str]) -> str:
     """Reviewable next actions; never pretend write-capable modules exist."""
     headings = {
@@ -457,7 +490,8 @@ def render_plan(plan: dict[str, str]) -> str:
         "berechtigten Proxmox-Executor. Ein Recovery-ZIP kann die "
         "Neuinstallation nicht ersetzen.</p>"
         '<p><a href="/discovery">Zurück zur Bestandsaufnahme</a> · '
-        '<a href="/recovery">Werkzeug: Recovery-Export (optional)</a></p>'
+        '<a class="button" href="/infrastructure">Stage 1: Ansible-Controller bereitstellen</a> · '
+        '<a href="/recovery">Recovery-Export (optional)</a></p>'
     )
     return flow_page("Installationsplan", 3, content)
 
@@ -532,7 +566,7 @@ def make_handler(state_path: Path, setup_code: str):
                 self._reply(200, render(load_plan(state_path), csrf,
                                         saved=self.path == "/saved",
                                         dns_suggestion=detect_network_dns()))
-            elif self.path in ("/discovery", "/plan", "/recovery"):
+            elif self.path in ("/discovery", "/plan", "/recovery", "/infrastructure"):
                 current_plan = load_plan(state_path)
                 if not current_plan:
                     self.send_response(303)
@@ -544,6 +578,8 @@ def make_handler(state_path: Path, setup_code: str):
                     self._reply(200, render_discovery(current_plan, discover_guest()))
                 elif self.path == "/plan":
                     self._reply(200, render_plan(current_plan))
+                elif self.path == "/infrastructure":
+                    self._reply(200, render_infrastructure(current_plan))
                 else:
                     self._reply(200, render_recovery(current_plan, csrf))
             else:
