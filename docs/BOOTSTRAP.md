@@ -63,45 +63,31 @@ VMID/network eligibility before creating the guest. If the template catalog
 is unavailable, do not substitute an unverified URL. Update guest packages
 after installation to the current supported Rocky Linux 10 minor release.
 
-## Network role recommendation and internal reachability
+## Network choice and internal reachability
 
-**Default recommendation: a dedicated internal infrastructure/service VLAN**,
-with controlled SSH access from the operator's internal admin workstation,
-working DHCP (or a deliberately configured static address), DNS, routing to
-security update mirrors and an explicit firewall allowlist. Do **not** infer
-the security role from `vmbr0`, `vmbr2`, host default routes or VLAN numbers.
+**Recommendation:** choose the bridge connected to the operator's internal
+network where the setup guest can be reached by the administrator via SSH,
+directly or through an allowed jump host. The administrator knows their own
+network mapping; the bootstrap does **not** attempt to infer or ask for an
+extra role such as IoT, internal or DMZ. A VM bridge's number is not a VLAN
+tag and the host's default route does not prove guest reachability.
 
-The console installer first discovers active bridges and optional 802.1Q tags,
-then asks the operator to **classify the selected segment**. This is a
-non-authoritative operator declaration, not network analysis:
+The setup wizard lists active Proxmox bridges, including VLAN-awareness.
+Selecting a VLAN-aware bridge offers an optional tag (1–4094); a
+non-VLAN-aware bridge is used untagged. The selection never changes physical
+switches, VLAN membership, firewall rules or network routes.
 
-| Declared network role | Bootstrap default |
-| --- | --- |
-| Intern / infrastructure | Recommended |
-| Hypervisor management | Conditional; avoid unrestricted access to Proxmox |
-| IoT | Not recommended for an administrator-facing service |
-| DMZ | Not recommended; no public Internet exposure required |
-| Other / unknown | Explicit risk confirmation and manual verification |
+**Current stage-0 browser access:** the guest web app listens on its own
+`127.0.0.1:8765` only. Even if the guest is in the internal network, the
+operator connects from their workstation via a permitted SSH tunnel,
+using local `http://127.0.0.1:8765`. This keeps the provisional setup UI
+unexposed until direct internal TLS and a secure one-time pairing process
+are implemented and reviewed. DHCP, DNS, outbound package repository access
+and SSH routing are not proved merely by the bridge being UP.
 
-For every non-recommended role, the installer shows a warning and asks for
-confirmation before continuing. Selection does **not** auto-create VLANs,
-alter firewalls, open Proxmox ports or make any network reachable.
-
-**Access limitation of current prototype:** the initial web app listens only
-on `127.0.0.1:8765` *inside the guest*. Even on an internal VLAN it cannot be
-opened directly as `http://<guest-ip>:8765`. An admin workstation must be
-able to reach the guest's SSH service, directly or using a permitted jump
-host, and set up a local SSH tunnel to reach the UI through
-`http://127.0.0.1:8765` locally. The Proxmox host management network should
-not be opened merely to make this possible. Existing firewall policy still
-applies, and the script does not prove guest reachability.
-
-**Future acceptance criterion for direct internal browser access:** only
-consider an explicit opt-in after implementing TLS, a one-time pairing
-credential bound to the administrator/session, request authentication,
-rate limiting, restrictive source network policy and a clean stop/recovery
-path. OIDC cannot be required for the very first bootstrap before an
-identity provider exists. Direct guest HTTP exposure is not part of PR #1.
+In a site-specific installation an operator might know that `vmbr3` is
+the internal bridge. That information belongs in local configuration, **not**
+as a universal default in public tobe4home code.
 
 ## Text-based interactive installer (Debian-style menus)
 
