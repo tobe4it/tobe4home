@@ -35,5 +35,8 @@ jobs:
       - name: Python regression tests
         run: python -m pytest -q tests
 
+      - name: AnsibleForms preview playbook syntax
+        run: ansible-playbook -i localhost, ansibleforms/playbooks/tb4h-preview.yml --syntax-check
+
       - name: Bilingual handbook and blank recovery PDFs
         run: python scripts/check_handbook.py
