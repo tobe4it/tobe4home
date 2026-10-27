@@ -1,5 +1,5 @@
 [Unit]
-Description=tobe4home stage-0 setup wizard (SSH tunnel only)
+Description=tobe4home stage-0 internal TLS setup wizard
 After=network.target
 
 [Service]
@@ -8,7 +8,7 @@ User=tobe4home
 Group=tobe4home
 WorkingDirectory=/opt/tobe4home
 EnvironmentFile=-/etc/tobe4home/bootstrap.env
-ExecStart=/usr/bin/python3 /opt/tobe4home/wizard.py --listen 127.0.0.1 --port 8765 --state-file /var/lib/tobe4home/site.local.json
+ExecStart=/usr/bin/python3 /opt/tobe4home/wizard.py --listen 0.0.0.0 --port 8765 --tls-cert /var/lib/tobe4home/tls.crt --tls-key /var/lib/tobe4home/tls.key --setup-code-file /var/lib/tobe4home/setup.code --state-file /var/lib/tobe4home/site.local.json
 Restart=on-failure
 RestartSec=3
 UMask=0077
