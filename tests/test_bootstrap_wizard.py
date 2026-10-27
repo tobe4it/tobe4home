@@ -85,9 +85,14 @@ class WizardTests(unittest.TestCase):
         self.assertNotIn("<img src=", result)
         plan = wizard.render_plan(dict(GOOD))
         self.assertIn("Gespeicherte Konfiguration", plan)
-        self.assertIn("Implementierung ausstehend", plan)
+        self.assertIn("Provisioner fehlt noch", plan)
+        self.assertIn("Ansible-Controller", plan)
+        self.assertIn("Coding-Agent", plan)
+        self.assertIn("Modell-Endpunkt", plan)
+        self.assertNotIn("Weiter: Recovery-Starterpaket erstellen", plan)
+        self.assertIn("Recovery-Export (optional)", plan)
         self.assertNotIn('action="/apply"', plan)
-        self.assertIn("keinen eingeschränkt berechtigten", plan)
+        self.assertIn("noch keinen eingeschränkt", plan)
 
     def test_full_setup_navigation_requires_saved_plan(self):
         import base64
@@ -130,7 +135,7 @@ class WizardTests(unittest.TestCase):
                 address, planned = fetch("/plan")
                 self.assertEqual(address, base + "/plan")
                 self.assertIn("Installationsreihenfolge", planned)
-                self.assertIn("Keine weitere Installation freigegeben", planned)
+                self.assertIn("Keine Infrastruktur-Provisionierung", planned)
                 self.assertNotIn("/apply", planned)
                 request = Request(base + "/apply", data=b"", headers=auth)
                 with self.assertRaises(HTTPError) as attempted:
