@@ -90,7 +90,7 @@ def report(storage: str, vmid: int) -> dict:
     # A failed pct create may remove the VMID config but leave a ZFS volume.
     # Read-only check; never delete volumes or reuse the name implicitly.
     rc, volumes = command(["pvesm", "list", storage, "--content", "rootdir"])
-    volume_pattern = re.compile(rf"(?:^|[/:\\s])subvol-{vmid}-disk-[0-9]+(?:$|\\s)")
+    volume_pattern = re.compile(rf"subvol-{vmid}-disk-[0-9]+")
     if rc != 0:
         add("Residual rootfs volumes", "WARN",
             "Could not list storage volumes; inspect manually before retrying")
