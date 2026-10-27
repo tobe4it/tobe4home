@@ -77,9 +77,11 @@ nfs: backup
     def test_launcher_does_not_skip_preflight(self):
         script = (ROOT / "bootstrap" / "bootstrap.sh").read_text()
         self.assertIn('"$SCRIPT_DIR/host_preflight.py" --storage "$STORAGE" --vmid "$VMID"', script)
-        self.assertIn('http://127.0.0.1:8765/health', script)
-        self.assertIn('http://127.0.0.1:$PORT/', script)
-        self.assertEqual(script.count('cat <<EOF\n'), 1)
+        self.assertIn('"https://" + ip + ":8765/health"', script)
+        self.assertIn('https://$GUEST_IP:$PORT/', script)
+        self.assertIn('SETUP CODE: $SETUP_CODE', script)
+        self.assertIn('ssh-keygen -lf "$SSH_KEY"', script)
+        self.assertNotIn('http://127.0.0.1:8765/health', script)
 
 
 if __name__ == "__main__":
