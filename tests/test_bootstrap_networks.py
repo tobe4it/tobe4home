@@ -43,6 +43,16 @@ class NetworkTests(unittest.TestCase):
     def test_untagged_is_explicitly_allowed(self):
         self.assertEqual(network.check_selection(self.bridges, "vmbr0", None)["name"], "vmbr0")
 
+    def test_installer_does_not_force_manual_network_role_question(self):
+        scripts = Path(__file__).resolve().parents[1] / "bootstrap"
+        textui = (scripts / "installer-tui.sh").read_text()
+        tui = (scripts / "launch.sh").read_text()
+        self.assertIn('Schritt 4/5 – Bridge', textui)
+        self.assertIn('INTERNEN Netzes', textui)
+        self.assertNotIn('Schritt 4/5 – Netzwerkrolle', textui)
+        self.assertNotIn('NETWORK_ROLE=', textui)
+        self.assertNotIn('NETWORK_ROLE=', tui)
+
 
 if __name__ == "__main__":
     unittest.main()
