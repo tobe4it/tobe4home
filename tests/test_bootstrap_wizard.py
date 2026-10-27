@@ -243,7 +243,7 @@ class WizardTests(unittest.TestCase):
     def test_all_prerequisites_are_present(self):
         names = [name for _, name, _ in wizard.PHASES]
         self.assertEqual(len(names), 7)
-        self.assertIn("Recovery and backups", names)
+        self.assertIn("Backup und Wiederherstellung", names)
 
 if __name__ == "__main__":
     unittest.main()
