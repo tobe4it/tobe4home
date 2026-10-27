@@ -89,6 +89,39 @@ In a site-specific installation an operator might know that `vmbr3` is
 the internal bridge. That information belongs in local configuration, **not**
 as a universal default in public tobe4home code.
 
+## SSH authentication: reuse an existing administrative public key
+
+Before a guest exists, the installer can reuse an SSH **public** login key from
+the existing administrative login to Proxmox. It checks the invoking sudo
+account (e.g. `lxadmin`) first, then Proxmox root's `authorized_keys`, whose
+usual symlink may resolve into `/etc/pve/priv/authorized_keys`. It displays
+each eligible key's source, algorithm and SHA256 fingerprint, and the operator
+selects the key already held by their workstation (e.g. Termius). Only the
+selected **public** key is installed for the non-root `tobe4home` guest account.
+
+The installer's key discovery never reads the private-key files `id_rsa` or
+`id_ed25519`; a host's `id_rsa.pub` is not assumed to be the admin's
+workstation credential. `authorized_keys` entries with restrictive options
+(`from=`, `command=`, `restrict`, etc.) are **not** carried over with
+their restrictions removed: such entries are excluded and may require
+a different approved key. Duplicate keys are merged by fingerprint.
+
+Selected public-key material is staged in an owner-only temporary file under
+`/run` (0600) and deleted on every normal cancellation or exit. The core
+bootstrap script validates it again with OpenSSH before creating a guest.
+No private material is copied, output in logs, or sent to the repository.
+
+If no suitable authorized login key can be found (for example, if the
+operator uses password authentication), the console wizard offers a direct
+**paste-public-key** option. That requires the operator to supply the
+workstation's public key; an SSH session alone does not reliably convey
+its private-key counterpart to the server. The UI should not generate a
+server-held private key as an implicit workaround.
+
+This selection is for access to the new setup LXC, **not** for obtaining or
+granting privileged access to Proxmox. The network still needs to allow
+SSH from the admin workstation or an explicitly permitted jump host.
+
 ## Text-based interactive installer (Debian-style menus)
 
 The launcher automatically uses the system `whiptail` utility when available
