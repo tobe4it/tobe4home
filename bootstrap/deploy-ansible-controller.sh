@@ -29,6 +29,26 @@ done
 command -v pct >/dev/null
 command -v pvesm >/dev/null
 command -v pveam >/dev/null
+command -v pvesh >/dev/null
+command -v python3 >/dev/null
+command -v lxc-usernsexec >/dev/null
+
+# Fail closed if cluster-level inventory cannot be read or parsed.
+CLUSTER_JSON="$(pvesh get /cluster/resources --type vm --output-format json)" ||
+  { echo "STOP: cannot read cluster-wide VMID inventory" >&2; exit 2; }
+python3 -c '
+import json,sys
+data=json.load(sys.stdin)
+if not isinstance(data,list):
+    raise SystemExit("Invalid cluster resource inventory")
+if any(int(x.get("vmid",-1))==1001 for x in data if isinstance(x,dict)):
+    raise SystemExit("STOP: VMID 1001 is allocated anywhere in the cluster")
+' <<< "$CLUSTER_JSON" ||
+  { echo "STOP: cluster-wide VMID check rejected install" >&2; exit 2; }
+
+lxc-usernsexec -m u:0:100000:65536 -m g:0:100000:65536 -- id -u |
+  grep -qx 0 || { echo "STOP: unprivileged user namespace unavailable" >&2; exit 2; }
+
 
 if pct config "$VMID" >/dev/null 2>&1; then
   echo "STOP: CT $VMID already exists" >&2; exit 2
@@ -82,7 +102,8 @@ read -r -p "Type DEPLOY 1001 to approve creation: " CONFIRM
 echo "CREATED: CT $VMID"
 pct start "$VMID"
 echo "STARTED: CT $VMID"
-pct exec "$VMID" -- dnf -y install ansible-core git openssh-clients python3 iproute
+pct exec "$VMID" -- dnf -y install ansible-core git openssh-clients openssh-server python3 iproute
+pct exec "$VMID" -- systemctl enable --now sshd
 pct exec "$VMID" -- ansible --version
 pct exec "$VMID" -- systemctl is-system-running --wait || true
 echo "STAGE-1 CONTROLLER PACKAGES READY: CT $VMID"
