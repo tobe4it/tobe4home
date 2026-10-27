@@ -82,13 +82,17 @@ strong random setup code and self-signed certificate SHA256 fingerprint.
 The wizard is directly accessible from the selected internal network,
 subject to site firewall/routing policy; **no SSH tunnel is required**.
 Its temporary certificate must be verified and replaced with a trusted
-internal certificate. The wizard currently records a nonsecret installation
-draft; it **does not yet install** further platform prerequisites. Production
-deployments require independent approval.
+internal certificate. The wizard currently records an installation draft, discovers facts
+from its own guest, and can export an **optional** local recovery starter.
+It **does not yet provision** the essential Ansible/Git/Coding-Agent
+infrastructure or execute prompt-derived Ansible deployments. This is the
+next critical implementation, not a mandatory recovery-export step.
+Production deployments require independent approval.
 
 The first Proxmox Realtest exposed a probable `umask 077` / uid-mapped
 rootfs traversal issue; `pct create` now runs with isolated `umask 022`
 while secret files retain restrictive permissions. The rootfs access fix
 and direct LAN connectivity are not yet verified on the user's host.
 
-See [guided bootstrap and installation gates](docs/BOOTSTRAP.md).
+See [guided bootstrap and installation gates](docs/BOOTSTRAP.md) and
+the [prompt-driven installation orchestrator architecture](docs/INSTALLATION-ORCHESTRATOR.md).
