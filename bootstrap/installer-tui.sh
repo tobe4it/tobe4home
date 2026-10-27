@@ -188,30 +188,99 @@ else
   msg "VLAN" "$BRIDGE ist nicht VLAN-aware; es wird ungetaggt angeschlossen."
 fi
 
-KEY_SUGGESTION="/root/.ssh/id_ed25519.pub"
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-  USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-  if [[ -n "$USER_HOME" && -r "$USER_HOME/.ssh/id_ed25519.pub" ]]; then
-    KEY_SUGGESTION="$USER_HOME/.ssh/id_ed25519.pub"
-  fi
-fi
-while true; do
-  KEY="$(input "Schritt 5/5 – SSH-Zugriff" \
-    "Pfad zum ÖFFENTLICHEN SSH-Schlüssel auf dem Proxmox-Host.
+# Authorized login keys can be read without touching host private keys.
+# Copy precisely the selected public key into an owner-only /run staging file,
+# and remove it on every exit (including cancellation and failed preflight).
+KEY_HELPER="$ROOT/bootstrap/ssh_keys.py"
+[[ -r "$KEY_HELPER" ]] || fail "SSH-Key-Erkennung fehlt im Bootstrap-Checkout."
+KEY_TEMP_DIR="$(mktemp -d /run/tobe4home-ssh.XXXXXXXX)" ||
+  fail "Temporäres SSH-Verzeichnis kann nicht angelegt werden."
+chmod 0700 "$KEY_TEMP_DIR"
+trap 'rm -rf -- "$KEY_TEMP_DIR"' EXIT
+KEY="$KEY_TEMP_DIR/admin.pub"
 
-Der dazugehörige PRIVATE Schlüssel muss sich auf einem
-Administrationsgerät befinden. Keine Passwörter eingeben." \
-    "$KEY_SUGGESTION")" || cancel
-  if [[ ! -r "$KEY" || ! -f "$KEY" ]]; then
-    msg "Schlüssel nicht gefunden" "Der öffentliche Schlüssel ist nicht lesbar. Bitte Pfad korrigieren."
-    continue
+while true; do
+  KEY_CANDIDATES="$(python3 "$KEY_HELPER" --list)" ||
+    fail "SSH-Anmeldeschlüssel können nicht ausgelesen werden."
+  KEY_ITEMS=()
+  declare -A KEY_FPS=()
+  declare -A KEY_SOURCES=()
+  while IFS='|' read -r KEY_IDX KEY_SOURCE KEY_ALG KEY_FP; do
+    [[ -n "$KEY_IDX" ]] || continue
+    KEY_ITEMS+=("$KEY_IDX" "$KEY_SOURCE | $KEY_ALG | $KEY_FP")
+    KEY_FPS["$KEY_IDX"]="$KEY_FP"
+    KEY_SOURCES["$KEY_IDX"]="$KEY_SOURCE"
+  done < <(python3 -c '
+import json,sys
+for x in json.load(sys.stdin):
+    print("|".join([x["index"],x["source"],x["algorithm"],x["fingerprint"]]))
+' <<< "$KEY_CANDIDATES")
+  KEY_ITEMS+=("paste" "Eigenen PUBLIC Key aus Termius einfügen")
+  KEY_ITEMS+=("file" "Vorhandenen öffentlichen Schlüssel per Pfad wählen")
+  KEY_CHOICE="$(menu "Schritt 5/5 – SSH-Schlüssel" \
+    "Erkannte SSH-Login-Schlüssel des Administrators.
+
+Ein passender öffentlicher Login-Schlüssel kann für den
+neuen Gast wiederverwendet werden – ohne manuelle Datei-
+anlage und ohne Kopieren irgendeines privaten Schlüssels.
+
+Prüfe, dass dein Administrationsgerät den privaten
+Gegenpart besitzt. Wähle den Schlüssel oder Import." \
+    "${KEY_ITEMS[@]}")" || cancel
+
+  if [[ "$KEY_CHOICE" == paste ]]; then
+    PUBLIC_KEY="$(input "SSH Public Key einfügen" \
+      "Den ÖFFENTLICHEN SSH-Key aus Termius einfügen
+(ssh-ed25519 / ecdsa / ssh-rsa).
+Nie den privaten Schlüssel übertragen." "")" || cancel
+    if KEY_FP="$(python3 "$KEY_HELPER" --from-stdin \
+      --destination "$KEY" <<< "$PUBLIC_KEY" 2>/dev/null)"; then
+      msg "Schlüssel übernommen" "Public Key validiert. Fingerprint:
+$KEY_FP
+
+Nur der öffentliche Schlüssel wird an den neuen LXC gegeben."
+      break
+    fi
+    msg "Kein gültiger Public Key" \
+      "Bitte eine einzelne gültige SSH-Public-Key-Zeile einfügen."
+  elif [[ "$KEY_CHOICE" == file ]]; then
+    KEY_SOURCE_FILE="$(input "SSH Public-Key-Datei" \
+      "Pfad zu einer vorhandenen PUBLIC-Key-Datei
+auf dem Proxmox-Host (niemals privaten Schlüssel)." "")" || cancel
+    if [[ -f "$KEY_SOURCE_FILE" && -r "$KEY_SOURCE_FILE" ]] &&
+       KEY_FP="$(python3 "$KEY_HELPER" --from-stdin \
+         --destination "$KEY" < "$KEY_SOURCE_FILE" 2>/dev/null)"; then
+      msg "Schlüssel übernommen" "Public Key validiert. Fingerprint:
+$KEY_FP"
+      break
+    fi
+    msg "Ungültige Datei" "Kein einzelner gültiger Public Key in dieser Datei."
+  elif [[ -n "${KEY_FPS[$KEY_CHOICE]:-}" ]]; then
+    CHOSEN_FP="${KEY_FPS[$KEY_CHOICE]}"
+    CHOSEN_SOURCE="${KEY_SOURCES[$KEY_CHOICE]}"
+    if ! question "SSH-Schlüssel bestätigen" \
+      "Anmeldeschlüssel aus:
+$CHOSEN_SOURCE
+
+Fingerprint:
+$CHOSEN_FP
+
+Hat dein Administrationsgerät (z. B. Termius) den
+dazugehörigen privaten Schlüssel?
+
+Nur der öffentliche Schlüssel wird kopiert."; then
+      continue
+    fi
+    if KEY_FP="$(python3 "$KEY_HELPER" --export "$CHOSEN_FP" \
+      --destination "$KEY" 2>/dev/null)"; then
+      break
+    fi
+    msg "Schlüssel geändert" \
+      "Der gewählte SSH-Schlüssel ist nicht mehr verfügbar.
+Bitte erneut auswählen."
+  else
+    msg "Ungültige Auswahl" "Bitte einen angezeigten Schlüssel auswählen."
   fi
-  if [[ "$(wc -l < "$KEY")" -ne 1 ]] ||
-     ! grep -Eq '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) [A-Za-z0-9+/=]+( .*)?$' "$KEY"; then
-    msg "Ungültiger SSH-Schlüssel" "Erforderlich ist eine einzelne gültige SSH-Public-Key-Zeile."
-    continue
-  fi
-  break
 done
 
 ARGS=(--vmid "$VMID" --storage "$STORAGE" --container-prefix "$PREFIX" \
@@ -228,7 +297,7 @@ RootFS:         $STORAGE
 Bridge:         $BRIDGE
 VLAN:           $VLAN_LABEL
 WebApp:         nur über SSH-Tunnel
-SSH-Key:        $KEY
+SSH-Fingerprint: $KEY_FP (aus SSH-Login oder Import)
 
 Template wird bei Bedarf von Proxmox heruntergeladen.
 
