@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import subprocess
 import ssl
 import tempfile
 import threading
@@ -66,6 +67,81 @@ def validate(values: dict[str, str]) -> dict[str, str]:
         raise ValueError("Select an available backup destination category.")
     return result
 
+def usable_dns_address(raw: str) -> str:
+    """Reject loopback resolvers, unsupported special IPs and invalid text."""
+    try:
+        address = ipaddress.ip_address(raw.strip().strip(",;"))
+    except ValueError:
+        return ""
+    if address.is_loopback or address.is_unspecified or address.is_multicast or address.is_link_local:
+        return ""
+    return str(address)
+
+
+def parse_resolv_conf(raw: str) -> list[str]:
+    """Read effective nameservers only; no assumptions about their origin."""
+    found = []
+    for line in raw.splitlines():
+        line = line.split("#", 1)[0].split(";", 1)[0].strip()
+        parts = line.split()
+        if len(parts) != 2 or parts[0] != "nameserver":
+            continue
+        ip = usable_dns_address(parts[1])
+        if ip and ip not in found:
+            found.append(ip)
+    return found
+
+
+def parse_dhcp_dns(raw: str) -> list[str]:
+    """Recognize NetworkManager DHCP option 6, not arbitrary IP4.DNS values."""
+    found = []
+    for line in raw.splitlines():
+        match = re.search(r"(?:^|\\s)domain_name_servers\\s*=\\s*(.+)$", line)
+        if not match:
+            continue
+        for token in re.split(r"[,\\s]+", match.group(1).strip()):
+            ip = usable_dns_address(token)
+            if ip and ip not in found:
+                found.append(ip)
+    return found
+
+
+def detect_network_dns() -> dict[str, str]:
+    """Offer a best-effort, read-only DNS suggestion from the running guest.
+
+    On Proxmox, resolv.conf may be supplied by the host even when the LXC
+    address comes from DHCP; never label it DHCP without actual lease data.
+    """
+    dhcp = []
+    try:
+        result = subprocess.run(
+            ["nmcli", "--fields", "DHCP4.OPTION", "device", "show", "eth0"],
+            capture_output=True, text=True, timeout=3, check=False)
+        if result.returncode == 0:
+            dhcp = parse_dhcp_dns(result.stdout)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    effective = []
+    try:
+        effective = parse_resolv_conf(
+            Path("/etc/resolv.conf").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError):
+        pass
+    if dhcp:
+        warning = ""
+        if effective and dhcp[0] not in effective:
+            warning = ("Achtung: Der über DHCP angebotene DNS steht nicht in "
+                       "/etc/resolv.conf. Proxmox könnte andere DNS-Werte vorgeben.")
+        return {"value": dhcp[0], "source": "DHCP-Option 6 (eth0)",
+                "warning": warning}
+    if effective:
+        return {"value": effective[0],
+                "source": "/etc/resolv.conf (DHCP-Herkunft nicht bestätigt)",
+                "warning": ""}
+    return {"value": "", "source": "Kein DNS-Server automatisch ermittelbar",
+            "warning": "Bitte den internen DNS-Server manuell eintragen."}
+
+
 def save_plan(path: Path, plan: dict[str, str]) -> None:
     """Atomic owner-only file; never write secrets to the Git working tree."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -90,9 +166,14 @@ def load_plan(path: Path) -> dict[str, str]:
     except (FileNotFoundError, ValueError, KeyError, TypeError, OSError):
         return {}
 
-def render(plan: dict[str, str], csrf: str, error: str = "", saved: bool = False) -> str:
+def render(plan: dict[str, str], csrf: str, error: str = "", saved: bool = False,
+           dns_suggestion: dict[str, str] | None = None) -> str:
     def val(key: str) -> str:
         return html.escape(plan.get(key, ""), quote=True)
+    dns_suggestion = dns_suggestion or {"value": "", "source": "Nicht ermittelt", "warning": ""}
+    dns_value = plan["dns_resolver"] if "dns_resolver" in plan else dns_suggestion["value"]
+    dns_description = html.escape(dns_suggestion["source"])
+    dns_warning = html.escape(dns_suggestion["warning"])
     def option(key: str, label: str) -> str:
         selected = " selected" if plan.get("backup_kind") == key else ""
         return f'<option value="{key}"{selected}>{html.escape(label)}</option>'
@@ -125,7 +206,9 @@ small,li span{{color:gray}} li{{margin-bottom:12px}} li span{{display:block}}
 <small>Suggested: tobe4home-. Editable for all future guests; changing it does not rename this setup LXC. VMIDs are independent.</small></label>
 <label>DNS base domain <input name="base_domain" maxlength="253" required value="{val('base_domain')}" placeholder="home.example.org"></label>
 <label>Timezone <input name="timezone" maxlength="80" required value="{val('timezone') or 'Europe/Berlin'}"></label>
-<label>DNS resolver IP <input name="dns_resolver" maxlength="45" required value="{val('dns_resolver')}" placeholder="192.0.2.53"></label>
+<label>DNS-Resolver (IPv4/IPv6) <input name="dns_resolver" maxlength="45" required value="{html.escape(dns_value, quote=True)}" placeholder="Interne DNS-IP">
+<small>Automatische Erkennung: {dns_description}. Du kannst den vorgeschlagenen Wert überschreiben.</small>
+{f'<small role="alert">{dns_warning}</small>' if dns_warning else ''}</label>
 <label>Independent backup destination <select name="backup_kind">
 {option('not-configured', 'Not configured – must be resolved before production')}
 {option('nas', 'NAS / network storage')}
@@ -210,7 +293,9 @@ def make_handler(state_path: Path, setup_code: str):
             if self.path == "/health":
                 self._reply(200, "ok", "text/plain; charset=utf-8")
             elif self.path in ("/", "/saved"):
-                self._reply(200, render(load_plan(state_path), csrf, saved=self.path == "/saved"))
+                self._reply(200, render(load_plan(state_path), csrf,
+                                        saved=self.path == "/saved",
+                                        dns_suggestion=detect_network_dns()))
             else:
                 self._reply(404, "Not found", "text/plain; charset=utf-8")
 
@@ -232,7 +317,8 @@ def make_handler(state_path: Path, setup_code: str):
                 plan = validate(values)
                 save_plan(state_path, plan)
             except (ValueError, OSError) as exc:
-                return self._reply(400, render(values, csrf, error=str(exc)))
+                return self._reply(400, render(values, csrf, error=str(exc),
+                                                dns_suggestion=detect_network_dns()))
             self.send_response(303)
             self.send_header("Location", "/saved")
             self.send_header("Cache-Control", "no-store")
