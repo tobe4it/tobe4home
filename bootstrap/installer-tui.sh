@@ -296,7 +296,7 @@ Betriebssystem: Rocky Linux 10
 RootFS:         $STORAGE
 Bridge:         $BRIDGE
 VLAN:           $VLAN_LABEL
-WebApp:         nur über SSH-Tunnel
+WebApp:         HTTPS direkt im gewählten Netz
 SSH-Fingerprint: $KEY_FP (aus SSH-Login oder Import)
 
 Template wird bei Bedarf von Proxmox heruntergeladen.
@@ -338,22 +338,27 @@ fi
 # From here on, this is the explicitly approved write phase.
 printf '\n=== tobe4home: bestätigte Stage-0-Installation (VMID %s) ===\n' "$VMID"
 bash "$BOOTSTRAP" "${ARGS[@]}" --apply
-# Only reached after the core bootstrap verified its HTTP health endpoint.
+# Reached only after core bootstrap verifies TLS + authenticated HTTPS on guest IP.
 GUEST_ADDRESS="$(pct exec "$VMID" -- ip -4 -o addr show dev eth0 2>/dev/null |
   awk '{split($4,a,"/"); if(a[1] != "") {print a[1]; exit}}')"
-PVE_LOGIN="${SUDO_USER:-root}"
-whiptail --backtitle "$BACKTITLE" --title "tobe4home – Setup bereit" \
+SETUP_CODE="$(pct exec "$VMID" -- cat /var/lib/tobe4home/setup.code)"
+TLS_FINGERPRINT="$(pct exec "$VMID" -- openssl x509 \
+  -in /var/lib/tobe4home/tls.crt -noout -fingerprint -sha256)"
+whiptail --backtitle "$BACKTITLE" --title "tobe4home – HTTPS-WebApp bereit" \
   --scrolltext --msgbox "CT $VMID (${PREFIX}-setup) ist eingerichtet.
-Die lokale WebApp hat ihren HTTP-Healthcheck bestanden.
+Der HTTPS-Healthcheck mit Anmeldung auf der Container-IP war erfolgreich.
 
-WEBADRESSE (auf deinem Rechner NACH Einrichtung des SSH-Tunnels):
-http://127.0.0.1:8765/
+WEBADRESSE DIREKT AUS DEM GEWÄHLTEN INTERNEN NETZ:
+https://$GUEST_ADDRESS:8765/
 
-Gast-IP: $GUEST_ADDRESS
+Benutzer: setup
+Einrichtungscode: $SETUP_CODE
 
-Tunnel vom Administrationsgerät:
-ssh -N -J $PVE_LOGIN@<PROXMOX-ADRESSE> \
-  -L 8765:127.0.0.1:8765 tobe4home@$GUEST_ADDRESS
+$TLS_FINGERPRINT
 
-Diese Adresse ist nicht direkt aus dem LAN erreichbar.
-Ein SSH-Tunnel ist wegen der noch fehlenden Authentifizierung nötig." 23 95
+ACHTUNG: Das erste Zertifikat ist selbstsigniert und 30 Tage gültig.
+Fingerabdruck im Browser mit dieser Anzeige vergleichen!
+Bewahre den Einrichtungscode sicher auf.
+Bei Firewall-/VLAN-Isolation ist die Erreichbarkeit vom
+Administrationsgerät noch gesondert zu prüfen.
+Kein SSH-Tunnel erforderlich." 26 100
