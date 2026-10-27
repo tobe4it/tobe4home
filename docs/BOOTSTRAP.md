@@ -19,8 +19,9 @@ Prompts are requests to the engineering pipeline, **not executable installers**.
 ## Supported stage-0 boundary
 
 - Proxmox VE remains the virtualization layer (its host OS is not replaced).
-- A predownloaded, reviewed Rocky Linux or AlmaLinux 9/10 LXC system template
-  is required; verify provenance and the actual template filename.
+- A Rocky Linux 10 system template from the official Proxmox catalog is
+  selected by default. If absent locally, it is downloaded *after* `--apply`
+  and before the new LXC is created. Read-only preview performs no download.
 - The CT is *unprivileged*, no nesting, no Docker/Podman socket access,
   no privileged mounts, no production credentials and no auto-start.
 - Guest SSH uses a dedicated non-root user and the supplied public key;
@@ -40,8 +41,8 @@ Prompts are requests to the engineering pipeline, **not executable installers**.
 
 A working, independently administered Proxmox VE host, functional storage with
 `rootdir` support, a Linux bridge with DHCP/network reachability, available CT
-ID, usable Rocky/AlmaLinux LXC template, admin workstation with SSH client and
-a dedicated **public** SSH key. Review guest firewall policy: allow SSH only
+ID, a usable Rocky Linux 10 template in the official Proxmox catalog,
+an admin workstation with SSH client and a dedicated **public** SSH key. Review guest firewall policy: allow SSH only
 from a trusted management path. Maintain a separate host console/recovery
 login. Take a backup of the Proxmox host's relevant configuration.
 
@@ -55,12 +56,13 @@ pvesm status
 ip -br link
 ```
 
-If the template is not already present, select an actual available filename
-from `pveam available` and download it manually with `pveam download`.
-Template names can change; check the local Proxmox template catalog before
-installation. For example, a Proxmox catalog may offer
-`rockylinux-10-default_20251001_amd64.tar.xz` while a more recent Rocky
-10.2 userspace is already supported. Update installed packages after creation.
+The script discovers the newest available official Rocky Linux 10 template
+from the Proxmox catalog and checks whether it is cached. During preview
+it merely reports the anticipated download. With `--apply`, it refreshes the
+official catalog, downloads the selected template if needed, then rechecks
+VMID/network eligibility before creating the guest. If the template catalog
+is unavailable, do not substitute an unverified URL. Update guest packages
+after installation to the current supported Rocky Linux 10 minor release.
 
 ## First run (preview, then explicit apply)
 
@@ -73,17 +75,21 @@ git clone https://github.com/tobe4it/tobe4home.git
 cd tobe4home
 # For evaluation, check out the reviewed feature branch/commit explicitly.
 bash bootstrap/bootstrap.sh \
-  --vmid 1000 \
-  --template 'local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz' \
-  --storage local-zfs --bridge vmbr0 \
+  --vmid 1000 --storage local-zfs \
   --ssh-public-key /root/.ssh/id_ed25519.pub
 
-# Only after checking all displayed preflight information:
+# Review the detected networks and proposed name prefix.
+# Only after approving the plan, repeat with --apply:
 bash bootstrap/bootstrap.sh \
-  --vmid 1000 \
-  --template 'local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz' \
-  --storage local-zfs --bridge vmbr0 \
+  --vmid 1000 --storage local-zfs \
   --ssh-public-key /root/.ssh/id_ed25519.pub --apply
+
+# Noninteractive equivalent with an explicitly selected network and prefix:
+bash bootstrap/bootstrap.sh \
+  --vmid 1000 --storage local-zfs \
+  --bridge vmbr2 --vlan-tag 42 \
+  --container-prefix house- \
+  --ssh-public-key /root/.ssh/id_ed25519.pub
 ```
 
 The VMID `1000` is a **tobe4home numbering convention**, not a hardcoded
@@ -99,13 +105,25 @@ other VMID ranges for existing deployments and legacy guests.
 | 1900–1999 | Development and test instances |
 
 The script rejects occupied VMIDs cluster-wide; **recheck at deployment
-time** because the earlier cluster listing may be stale. The exact Proxmox
-bridge, storage and SSH public-key path are site-dependent examples and must
-be verified from the target node. The named Rocky 10 template is the currently
-listed official Proxmox template; verify availability and download it before
-invoking this script. The template is a base snapshot, not a promise that
-its included packages match the newest Rocky 10 minor release. Update the
-new LXC to the latest supported 10.x minor and security errata.
+time** because the earlier cluster listing may be stale. Bridge, VLAN, storage
+and SSH public-key path are site-dependent examples that must be verified.
+`vmbr2` is not VLAN 2: tags such as VLAN 42 are independent and accepted only
+on an active VLAN-aware bridge. A selected bridge/tag does not establish
+that DHCP, SSH or upstream routing is available.
+
+**Hostnames and VMIDs are separate choices.** The proposed hostname prefix is
+`tobe4home-`; the operator may overwrite it during interactive bootstrap,
+set it with `--container-prefix house-`, or adjust the proposal later in the
+web wizard. The actual initial LXC hostname becomes `house-setup` in that
+example. Acceptable prefixes are lowercase DNS-label characters, max 57
+characters excluding a trailing `-`; the resulting LXC hostname cannot be
+longer than 63 characters. Changing the wizard preference affects *future*
+service deployments, never renames the existing setup LXC.
+VMID `1000` remains independently selectable.
+
+The template is a base snapshot, not a promise that the included packages
+match the newest Rocky Linux 10 minor release. Update the new guest to the
+latest supported release and apply security errata.
 
 **Default OS: Rocky Linux 10** (latest supported 10.x minor). Rocky Linux
 9 is a documented compatibility fallback only. Rocky Linux 10 on AMD64
@@ -137,10 +155,11 @@ choose a different local source port while keeping the remote side at 8765.
 
 The web form records:
 
-1. Human-readable installation label.
-2. Private site's base DNS domain (stored only in the guest).
-3. Timezone and DNS resolver IP.
-4. Independent backup destination *category*.
+1. Editable guest hostname prefix (default: the value selected during bootstrap).
+2. Human-readable installation label.
+3. Private site's base DNS domain (stored only in the guest).
+4. Timezone and DNS resolver IP.
+5. Independent backup destination *category*.
 
 It does **not** ask for passwords, API tokens, email credentials, private
 keys, payment data or user identity lists. It performs input validation, CSRF
