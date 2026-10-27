@@ -74,10 +74,21 @@ to a pinned, verified stable release (not a moving feature branch).
 If `/root/tobe4home-bootstrap` already exists, do not overwrite it:
 review it and run `bash /root/tobe4home-bootstrap/bootstrap/launch.sh`.
 
-The future installation entry point starts **on a prepared Proxmox VE host**:
-a preflighted script creates a dedicated, unprivileged Rocky/AlmaLinux LXC
-and starts a localhost-only, SSH-tunneled setup wizard. The wizard currently
-records a non-secret installation draft; it **does not yet install** the
-prerequisite services. Production deployments require independent approval.
+The installation entry point starts **on a prepared Proxmox VE host**:
+a preflighted script creates a dedicated, unprivileged Rocky Linux 10 LXC.
+After health checks, it shows the guest's actual IPv4 address plus its
+internal **HTTPS URL** (`https://<guest-IP>:8765/`), bootstrap username,
+strong random setup code and self-signed certificate SHA256 fingerprint.
+The wizard is directly accessible from the selected internal network,
+subject to site firewall/routing policy; **no SSH tunnel is required**.
+Its temporary certificate must be verified and replaced with a trusted
+internal certificate. The wizard currently records a nonsecret installation
+draft; it **does not yet install** further platform prerequisites. Production
+deployments require independent approval.
+
+The first Proxmox Realtest exposed a probable `umask 077` / uid-mapped
+rootfs traversal issue; `pct create` now runs with isolated `umask 022`
+while secret files retain restrictive permissions. The rootfs access fix
+and direct LAN connectivity are not yet verified on the user's host.
 
 See [guided bootstrap and installation gates](docs/BOOTSTRAP.md).
