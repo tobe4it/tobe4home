@@ -27,7 +27,9 @@ jobs:
           python -m pip install 'ansible-core>=2.18,<2.20' 'pytest>=8,<10' 'PyYAML>=6,<7' 'Jinja2>=3,<4' 'reportlab>=4,<5'
 
       - name: Bootstrap shell syntax
-        run: bash -n bootstrap/bootstrap.sh
+        run: |
+          bash -n bootstrap/bootstrap.sh
+          bash -n bootstrap/launch.sh
 
       - name: Python regression tests
         run: python -m pytest -q tests
