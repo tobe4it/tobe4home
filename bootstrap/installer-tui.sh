@@ -113,16 +113,21 @@ Kleinbuchstaben, Ziffern und interne Bindestriche,
 höchstens 57 Zeichen. Bitte erneut eingeben."
 done
 
-STORAGE_STATUS="$(pvesm status)" || fail "Proxmox-Storage-Status nicht lesbar."
+# "pvesm status --content rootdir" is the documented supported filter.
+# A dedicated parser validates its table shape and selects only active stores.
+STORAGE_JSON="$(python3 "$ROOT/bootstrap/storages.py" --json)" ||
+  fail "Keine aktiven LXC-RootFS-Storages erkannt."
 STORAGE_ITEMS=()
-while read -r NAME TYPE STATE _; do
-  [[ "$NAME" == "Name" || "$STATE" != "active" ]] && continue
-  STORAGE_CONFIG="$(pvesm config "$NAME" 2>/dev/null)" || continue
-  if grep -Eq '^[[:space:]]*content[[:space:]].*rootdir' <<< "$STORAGE_CONFIG"; then
-    STORAGE_ITEMS+=("$NAME" "Aktiv | $TYPE | LXC-RootFS")
-  fi
-done <<< "$STORAGE_STATUS"
-(( ${#STORAGE_ITEMS[@]} > 0 )) || fail "Kein aktiver Storage für LXC-RootFS ermittelt."
+while IFS='|' read -r NAME TYPE; do
+  [[ -n "$NAME" ]] || continue
+  STORAGE_ITEMS+=("$NAME" "Aktiv | $TYPE | LXC-RootFS")
+done < <(python3 -c '
+import json,sys
+for item in json.load(sys.stdin):
+    print(item["name"] + "|" + item["type"])
+' <<< "$STORAGE_JSON")
+(( ${#STORAGE_ITEMS[@]} > 0 )) ||
+  fail "Kein aktiver Storage für LXC-RootFS ermittelt."
 STORAGE="$(menu "Schritt 3/5 – Datenspeicher" \
   "Wähle den Speicherort für die Systemplatte des Setup-Containers.
 Vorhandene Volumes werden nicht verändert." "${STORAGE_ITEMS[@]}")" || cancel
