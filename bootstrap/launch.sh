@@ -126,13 +126,19 @@ echo "Bridge names and VLAN IDs do not prove network roles."
 echo "The setup web app remains guest-loopback-only; SSH tunnel required."
 
 heading "5/5 · Public SSH key"
-echo "Use the public key whose PRIVATE counterpart is on your admin workstation."
-echo "Do NOT use a host-only key whose private counterpart cannot be accessed."
-if [[ -d /root/.ssh ]]; then
-  find /root/.ssh -maxdepth 1 -type f -name '*.pub' -print
-fi
-KEY="$(ask "Public SSH key file path" "/root/.ssh/id_ed25519.pub")"
-[[ -r "$KEY" ]] || fail "Public SSH key missing or unreadable"
+echo "Admin login public keys are discovered from authorized_keys."
+echo "Choose the current workstation's key by fingerprint. The private key"
+echo "remains on your workstation; no manual /root/.ssh key setup is needed."
+KEY_HELPER="$ROOT/bootstrap/ssh_keys.py"
+[[ -r "$KEY_HELPER" ]] || fail "SSH key discovery module missing"
+KEY_TEMP_DIR="$(mktemp -d /run/tobe4home-ssh.XXXXXXXX)" ||
+  fail "Unable to stage public key"
+chmod 0700 "$KEY_TEMP_DIR"
+trap 'rm -rf -- "$KEY_TEMP_DIR"' EXIT
+KEY="$KEY_TEMP_DIR/admin.pub"
+KEY_FP="$(python3 "$KEY_HELPER" --interactive --destination "$KEY")" ||
+  fail "SSH key selection cancelled/invalid"
+printf 'Public key selected: %s\n' "$KEY_FP"
 ARGS+=(--ssh-public-key "$KEY")
 echo "OS: Rocky Linux 10 (official Proxmox catalog; auto-download on apply)"
 echo "Template storage: local"
