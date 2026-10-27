@@ -141,6 +141,88 @@ class WizardTests(unittest.TestCase):
                 server.server_close()
                 worker.join(timeout=3)
 
+    def test_recovery_bundle_is_a_real_offline_verifiable_artifact(self):
+        import io
+        import hashlib
+        import json
+        import subprocess
+        import zipfile
+        with tempfile.TemporaryDirectory() as directory:
+            data = wizard.recovery_bundle(dict(GOOD))
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                expected = {
+                    "site/site.local.json", "ansible/inventory.yml",
+                    "ansible/ansible.cfg", "ansible/playbooks/verify-local.yml",
+                    "README-RECOVERY.md", "SHA256SUMS", "verify-recovery.py"}
+                self.assertEqual(set(archive.namelist()), expected)
+                site = json.loads(archive.read("site/site.local.json"))
+                self.assertEqual(site["site"], GOOD)
+                self.assertFalse(site["deployment_enabled"])
+                sums = archive.read("SHA256SUMS").decode().splitlines()
+                for line in sums:
+                    digest, name = line.split("  ", 1)
+                    self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), digest)
+                archive.extractall(directory)
+            verify = subprocess.run(
+                ["python3", str(Path(directory) / "verify-recovery.py")],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(verify.returncode, 0, verify.stderr)
+            self.assertIn("PASS", verify.stdout)
+
+    def test_recovery_download_requires_login_csrf_explicit_action(self):
+        import base64
+        import io
+        import json
+        import threading
+        import zipfile
+        from http.server import ThreadingHTTPServer
+        from urllib.error import HTTPError
+        from urllib.parse import urlencode
+        from urllib.request import Request, urlopen
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "site.local.json"
+            wizard.save_plan(state, wizard.validate(dict(GOOD)))
+            secret = "test-strong-setup-credential-xxxxxxxx"
+            server = ThreadingHTTPServer(
+                ("127.0.0.1", 0), wizard.make_handler(state, secret))
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                auth = {"Authorization": "Basic " + base64.b64encode(
+                    ("setup:" + secret).encode()).decode()}
+                page = Request(base + "/recovery", headers=auth)
+                with urlopen(page, timeout=3) as response:
+                    html = response.read().decode()
+                self.assertIn('action="/recovery/export"', html)
+                self.assertIn("Recovery-Starterpaket", html)
+                def post(payload, headers):
+                    return urlopen(Request(
+                        base + "/recovery/export",
+                        data=urlencode(payload).encode(),
+                        headers=headers), timeout=3)
+                with self.assertRaises(HTTPError) as no_auth:
+                    post({"csrf": "n/a", "confirm": "export-stage1"}, {})
+                self.assertEqual(no_auth.exception.code, 401)
+                with self.assertRaises(HTTPError) as bad_csrf:
+                    post({"csrf": "n/a", "confirm": "export-stage1"}, auth)
+                self.assertEqual(bad_csrf.exception.code, 403)
+                token = html.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+                with self.assertRaises(HTTPError) as no_approval:
+                    post({"csrf": token}, auth)
+                self.assertEqual(no_approval.exception.code, 403)
+                with post({"csrf": token, "confirm": "export-stage1"}, auth) as response:
+                    content = response.read()
+                    self.assertEqual(response.headers["Content-Type"], "application/zip")
+                    self.assertIn("attachment;", response.headers["Content-Disposition"])
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    site = json.loads(archive.read("site/site.local.json"))
+                    self.assertEqual(site["site"], GOOD)
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join(timeout=3)
+
     def test_all_pages_require_setup_code(self):
         import base64
         import threading
