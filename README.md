@@ -94,5 +94,14 @@ rootfs traversal issue; `pct create` now runs with isolated `umask 022`
 while secret files retain restrictive permissions. The rootfs access fix
 and direct LAN connectivity are not yet verified on the user's host.
 
+**New development preview (27 Oct 2026):** a deterministic site/Proxmox
+inventory planner, an offline topology HTML report, a generated OpenTofu
+configuration and a two-step AnsibleForms wizard prototype have been added
+in the feature branch. They are tested using synthetic inventory data.
+**Neither AnsibleForms nor OpenTofu is installed on CT 1001 by these commits,
+and no new guests are deployed.** Follow the
+[Controller integration and review guide](docs/CONTROLLER-INTEGRATION.md)
+for read-only preview commands and pending real-installation gates.
+
 See [guided bootstrap and installation gates](docs/BOOTSTRAP.md) and
 the [prompt-driven installation orchestrator architecture](docs/INSTALLATION-ORCHESTRATOR.md).
