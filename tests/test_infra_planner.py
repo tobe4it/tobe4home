@@ -138,6 +138,31 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn("root@pam", hcl)
         self.assertNotIn("destroy", hcl.replace("prevent_destroy", ""))
 
+    def test_html_topology_escapes_untrusted_inventory(self):
+        site, choices, inventory = fixtures()
+        plan = planner.compile_plan(site, choices, inventory)
+        rendered = planner.render_html(plan)
+        self.assertIn("VORSCHAU", rendered)
+        self.assertIn("CT 1002", rendered)
+        self.assertIn("plan", rendered.lower())
+        self.assertIn(plan["plan_sha256"], rendered)
+        self.assertNotIn("<script", rendered.lower())
+        plan["existing_services"]["model"] = 'https://example.invalid/"><script>alert(1)</script>'
+        safe = planner.render_html(plan)
+        self.assertNotIn("<script>", safe)
+        self.assertIn("&lt;script&gt;", safe)
+
+    def test_rejects_loopback_dns_and_url_credentials(self):
+        site, choices, inventory = fixtures()
+        site["dns_resolver"] = "127.0.0.1"
+        with self.assertRaises(ValueError):
+            planner.compile_plan(site, choices, inventory)
+        site, choices, inventory = fixtures()
+        inventory["existing_services"]["model"]["endpoint"] = (
+            "https://user:password@models.example.invalid/?api_token=abc")
+        with self.assertRaises(ValueError):
+            planner.compile_plan(site, choices, inventory)
+
     def test_cli_json_preview_and_tf_preview(self):
         site, choices, inventory = fixtures()
         with tempfile.TemporaryDirectory() as tmp:
@@ -156,6 +181,10 @@ class PlannerTests(unittest.TestCase):
                                  text=True, check=True)
             self.assertIn("proxmox_virtual_environment_container", txt.stdout)
             self.assertNotIn("api_token =", txt.stdout)
+            html = subprocess.run(args + ["--html"], capture_output=True,
+                                  text=True, check=True)
+            self.assertIn("<!doctype html>", html.stdout)
+            self.assertIn(data["plan_sha256"], html.stdout)
             self.assertEqual(sorted(x.name for x in root.iterdir()),
                              ["choices.json", "inventory.json", "site.json"])
 
