@@ -188,7 +188,7 @@ def render(plan: dict[str, str], csrf: str, error: str = "", saved: bool = False
     navigation = ('<nav aria-label="Installationsschritte"><strong>1. Einstellungen</strong> '
                   '<a href="/discovery">2. Bestandsaufnahme</a> '
                   '<a href="/plan">3. Installationsplan</a>'
-           '<a href="/recovery">4. Recovery-Bootstrap</a></nav>'
+           '<a href="/recovery">Werkzeuge: Recovery-Export</a></nav>'
                   if plan and not error else
                   '<nav aria-label="Installationsschritte"><strong>1. Einstellungen</strong>'
                   '<span>2. Bestandsaufnahme</span><span>3. Installationsplan</span></nav>')
@@ -394,7 +394,7 @@ def recovery_bundle(plan: dict[str, str]) -> bytes:
 def render_recovery(plan: dict[str, str], csrf: str) -> str:
     name = html.escape(plan["site_label"], quote=True)
     content = (
-        '<section><h2>Stage 1 – Recovery-Grundlage exportieren</h2>'
+        '<section><h2>Optionales Werkzeug – Recovery-Grundlage exportieren</h2>'
         f'<p>Konfiguration: <strong>{name}</strong>. '
         'Erzeuge ein eigenständiges ZIP mit Einstellungen, '
         'Ansible-Grundgerüst, Prüfsummen und einer Anleitung '
@@ -428,9 +428,12 @@ def render_plan(plan: dict[str, str]) -> str:
     )
     phases = (
         ("Stage 0", "Setup-Container und interner HTTPS-Zugriff", "Erfolgt"),
-        ("Stage 1", "Infrastruktur- und Recovery-Bootstrap", "Implementierung ausstehend"),
-        ("Stage 2", "Backup-Ziel überprüfen und Restore testen", "Implementierung ausstehend"),
-        ("Stage 3", "Forgejo, Identität und weitere Dienste", "Implementierung ausstehend"),
+        ("Stage 1", "Ansible-Controller und notwendigen Git-/Agent-Betrieb bereitstellen",
+         "Provisioner fehlt noch"),
+        ("Stage 2", "Anpassbare Prompts in geprüfte Ansible-Projekte übersetzen",
+         "Prompt-/Git-/CI-Pipeline fehlt noch"),
+        ("Stage 3", "Freigegebene Ansible-Deployments und Backups/Restore",
+         "Deployment-/Backup-Gates fehlen noch"),
     )
     stages = "".join(
         f"<li><strong>{html.escape(name)}:</strong> {html.escape(desc)} "
@@ -439,12 +442,22 @@ def render_plan(plan: dict[str, str]) -> str:
     content = (
         f"<section><h2>Gespeicherte Konfiguration</h2><dl>{rows}</dl></section>"
         f"<section><h2>Installationsreihenfolge</h2><ol>{stages}</ol></section>"
-        "<p><strong>Freigabestatus:</strong> Keine weitere Installation freigegeben "
-        "oder gestartet. Der aktuelle Prototyp besitzt noch keinen "
-        "eingeschränkt berechtigten Proxmox-/Ansible-Ausführer. "
-        "Die Einrichtung endet hier bewusst vor schreibenden Aktionen.</p>"
+        "<section><h2>Benötigte Installationsgrundlage</h2>"
+        "<p>Bevor die eigentlichen tobe4home-Dienste aus Prompts entstehen, "
+        "muss der Setup-Assistent die notwendige Steuerungsumgebung anlegen: "
+        "Ansible-Controller, ein Git-Repository (neu oder vorhanden), "
+        "eine isolierte Coding-Agent-Umgebung und einen Modell-Endpunkt "
+        "(neu oder vorhanden). Der LXC-/VM-Bedarf wird erst nach "
+        "Bestandsprüfung und Betriebsartauswahl verbindlich festgelegt.</p>"
+        "<p><strong>Derzeit blockiert:</strong> Die Erstellung weiterer LXCs "
+        "ist in diesem Entwicklungsstand noch nicht implementiert. "
+        "Es wurde kein zusätzlicher Container angelegt.</p></section>"
+        "<p><strong>Freigabestatus:</strong> Keine Infrastruktur-Provisionierung "
+        "freigegeben oder gestartet. Es gibt noch keinen eingeschränkt "
+        "berechtigten Proxmox-Executor. Ein Recovery-ZIP kann die "
+        "Neuinstallation nicht ersetzen.</p>"
         '<p><a href="/discovery">Zurück zur Bestandsaufnahme</a> · '
-        '<a class="button" href="/recovery">Weiter: Recovery-Starterpaket erstellen</a></p>'
+        '<a href="/recovery">Werkzeug: Recovery-Export (optional)</a></p>'
     )
     return flow_page("Installationsplan", 3, content)
 
