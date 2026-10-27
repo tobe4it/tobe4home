@@ -84,9 +84,21 @@ def report(storage: str, vmid: int) -> dict:
         "Tested isolated uid/gid mapping 0→100000 (not a rootfs write test)")
 
     ct_dir = Path(f"/var/lib/lxc/{vmid}")
-    add("Stale LXC directory", "WARN" if ct_dir.exists() else "PASS",
-        "Existing /var/lib/lxc/<VMID> requires operator inspection" if ct_dir.exists()
+    add("Stale LXC directory", "FAIL" if ct_dir.exists() else "PASS",
+        "Existing /var/lib/lxc/<VMID> must be inspected before retrying" if ct_dir.exists()
         else "No existing LXC directory detected")
+    # A failed pct create may remove the VMID config but leave a ZFS volume.
+    # Read-only check; never delete volumes or reuse the name implicitly.
+    rc, volumes = command(["pvesm", "list", storage, "--content", "rootdir"])
+    volume_pattern = re.compile(rf"(?:^|[/:\\s])subvol-{vmid}-disk-[0-9]+(?:$|\\s)")
+    if rc != 0:
+        add("Residual rootfs volumes", "WARN",
+            "Could not list storage volumes; inspect manually before retrying")
+    elif volume_pattern.search(volumes):
+        add("Residual rootfs volumes", "FAIL",
+            "Storage still contains a rootfs volume for this VMID; investigate first")
+    else:
+        add("Residual rootfs volumes", "PASS", "No matching rootdir volumes listed")
 
     cfg_path = Path("/etc/pve/storage.cfg")
     try:
