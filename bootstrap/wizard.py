@@ -189,7 +189,7 @@ def render(plan: dict[str, str], csrf: str, error: str = "", saved: bool = False
                   '<nav aria-label="Installationsschritte"><strong>1. Einstellungen</strong>'
                   '<span>2. Bestandsaufnahme</span><span>3. Installationsplan</span></nav>')
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>tobe4home – Setup</title>
 <style>
 :root{{font-family:system-ui,-apple-system,sans-serif;color-scheme:light dark}}
@@ -421,6 +421,18 @@ def make_handler(state_path: Path, setup_code: str):
                 self._reply(200, render(load_plan(state_path), csrf,
                                         saved=self.path == "/saved",
                                         dns_suggestion=detect_network_dns()))
+            elif self.path in ("/discovery", "/plan"):
+                current_plan = load_plan(state_path)
+                if not current_plan:
+                    self.send_response(303)
+                    self.send_header("Location", "/")
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return
+                if self.path == "/discovery":
+                    self._reply(200, render_discovery(current_plan, discover_guest()))
+                else:
+                    self._reply(200, render_plan(current_plan))
             else:
                 self._reply(404, "Not found", "text/plain; charset=utf-8")
 
@@ -445,7 +457,7 @@ def make_handler(state_path: Path, setup_code: str):
                 return self._reply(400, render(values, csrf, error=str(exc),
                                                 dns_suggestion=detect_network_dns()))
             self.send_response(303)
-            self.send_header("Location", "/saved")
+            self.send_header("Location", "/discovery")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
 
