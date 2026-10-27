@@ -73,6 +73,12 @@ the explicitly confirmed `tb4h-` suggestion). Active storage, bridge and
 VLAN are chosen from read-only Proxmox discovery. The public SSH key is
 validated before any installation is permitted.
 
+Storage selection uses the supported, read-only Proxmox command
+`pvesm status --content rootdir` and offers only **active** LXC-capable
+storages. It does not use an unsupported `pvesm config <name>` call. A
+previous installer draft incorrectly hid `local-zfs`; this has been corrected
+and regression-tested.
+
 No packages are installed on the Proxmox host automatically. When `whiptail`
 is missing, the launcher falls back to the original command-line questions.
 An operator may explicitly install `whiptail` with the host's normal apt
