@@ -177,13 +177,21 @@ python3 "$SCRIPT_DIR/networks.py" --validate "$BRIDGE" ${VLAN_TAG:+--tag "$VLAN_
 NETWORK_ARGS="name=eth0,bridge=${BRIDGE},ip=dhcp,firewall=1"
 [[ -z "$VLAN_TAG" ]] || NETWORK_ARGS+=",tag=${VLAN_TAG}"
 echo "Creating a NEW unprivileged, non-autostarting LXC..."
-pct create "$VMID" "$TEMPLATE" \
-  --hostname "$HOSTNAME" --unprivileged 1 --onboot 0 \
-  --memory "$MEMORY" --cores "$CORES" --swap 256 \
-  --rootfs "${STORAGE}:${DISK}" \
-  --net0 "$NETWORK_ARGS" \
-  --tags "tobe4home;bootstrap" \
-  --description "tobe4home stage-0 setup wizard; no production deployment"
+# Proxmox creates a temporary /var/lib/lxc/<VMID>/rootfs tree that must
+# be traversable by lxc-usernsexec's mapped uid (typically 100000). The
+# bootstrap's global umask 077 is safe for secrets but may cause Proxmox
+# to create those host directories root:root 0700, preventing extraction.
+# Restrict umask 022 to THIS pct create subprocess, never relax host paths.
+(
+  umask 022
+  pct create "$VMID" "$TEMPLATE" \
+    --hostname "$HOSTNAME" --unprivileged 1 --onboot 0 \
+    --memory "$MEMORY" --cores "$CORES" --swap 256 \
+    --rootfs "${STORAGE}:${DISK}" \
+    --net0 "$NETWORK_ARGS" \
+    --tags "tobe4home;bootstrap" \
+    --description "tobe4home stage-0 setup wizard; no production deployment"
+)
 echo "Created CT $VMID. Failures after this point leave it intact for diagnosis."
 pct start "$VMID"
 
