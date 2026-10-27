@@ -1,0 +1,23 @@
+[Unit]
+Description=tobe4home stage-0 setup wizard (SSH tunnel only)
+After=network.target
+
+[Service]
+Type=simple
+User=tobe4home
+Group=tobe4home
+WorkingDirectory=/opt/tobe4home
+ExecStart=/usr/bin/python3 /opt/tobe4home/wizard.py --listen 127.0.0.1 --port 8765 --state-file /var/lib/tobe4home/site.local.json
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tobe4home
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
