@@ -243,8 +243,7 @@ def discover_guest() -> dict[str, str]:
               "dns_origin": "Nicht ermittelt"}
     try:
         os_release = Path("/etc/os-release").read_text(encoding="utf-8")
-        match = re.search(r'^PRETTY_NAME="?([^"\n]+)"?
-$', os_release, re.MULTILINE)
+        match = re.search(r'^PRETTY_NAME="?([^"\n]+)"?$', os_release, re.MULTILINE)
         if match:
             result["os"] = match.group(1)
     except (OSError, UnicodeError):
