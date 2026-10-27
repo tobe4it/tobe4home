@@ -97,7 +97,8 @@ def pick(candidates: list[dict]) -> tuple[str, int | None]:
         raise ValueError("Interactive selection requires a terminal; otherwise use --bridge")
     display(candidates)
     while True:
-        choice = input("Select network number (blank cancels): ").strip()
+        print("Select network number (blank cancels): ", end="", file=sys.stderr, flush=True)
+        choice = input().strip()
         if not choice:
             raise ValueError("Network selection cancelled")
         if choice.isascii() and choice.isdigit() and 1 <= int(choice) <= len(candidates):
@@ -105,7 +106,8 @@ def pick(candidates: list[dict]) -> tuple[str, int | None]:
             break
         print("Invalid selection.", file=sys.stderr)
     if chosen["vlan_aware"]:
-        raw = input("VLAN tag 1–4094, or blank for untagged: ").strip()
+        print("VLAN tag 1–4094, or blank for untagged: ", end="", file=sys.stderr, flush=True)
+        raw = input().strip()
         if raw and (not raw.isascii() or not raw.isdigit()):
             raise ValueError("Invalid VLAN tag")
         tag = int(raw) if raw else None
