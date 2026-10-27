@@ -338,7 +338,6 @@ def render_plan(plan: dict[str, str]) -> str:
         f"<li><strong>{html.escape(name)}:</strong> {html.escape(desc)} "
         f"<small>({html.escape(status)})</small></li>"
         for name, desc, status in phases)
-    )
     content = (
         f"<section><h2>Gespeicherte Konfiguration</h2><dl>{rows}</dl></section>"
         f"<section><h2>Installationsreihenfolge</h2><ol>{stages}</ol></section>"
