@@ -74,11 +74,29 @@ fi
 
 heading "2/5 · Container hostname prefix"
 echo "The default prefix is tobe4home-; the setup guest will be PREFIX-setup."
-PREFIX="$(ask "Hostname prefix (can be changed)" "tobe4home-")"
-PREFIX="${PREFIX%-}"
-[[ "$PREFIX" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] ||
-  fail "Prefix must be a lowercase DNS label (letters, digits, internal hyphens)"
-(( ${#PREFIX} <= 57 )) || fail "Prefix is too long"
+while true; do
+  RAW_PREFIX="$(ask "Hostname prefix (can be changed)" "tobe4home-")"
+  PREFIX="${RAW_PREFIX%-}"
+  if [[ "$PREFIX" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] &&
+     (( ${#PREFIX} <= 57 )); then
+    break
+  fi
+  SUGGESTED_PREFIX="${RAW_PREFIX//_/-}"
+  SUGGESTED_PREFIX="${SUGGESTED_PREFIX%-}"
+  if [[ "$RAW_PREFIX" == *"_"* &&
+        "$SUGGESTED_PREFIX" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] &&
+     (( ${#SUGGESTED_PREFIX} <= 57 )); then
+    printf "Underscores are not valid in Linux hostnames. Suggested: %s-\n" "$SUGGESTED_PREFIX"
+    read -r -p "Accept suggested prefix? [y/N]: " ANSWER ||
+      fail "Input cancelled"
+    if [[ "$ANSWER" =~ ^[yY]([eE][sS])?$ ]]; then
+      PREFIX="$SUGGESTED_PREFIX"
+      break
+    fi
+  else
+    echo "Invalid hostname prefix; use lowercase letters, digits and internal hyphens (max 57)."
+  fi
+done
 printf 'Planned hostname: %s-setup\n' "$PREFIX"
 
 heading "3/5 · Root filesystem storage"
