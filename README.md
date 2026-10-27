@@ -32,3 +32,13 @@ The automated validation workflow currently checks Python contracts and bilingua
 
 English and German setup and operations documentation is available under `docs/` and `docs/handbook/`. A newcomer path starts with infrastructure prerequisites and basic security; advanced integrations are optional.
 
+
+## Guided installation (experimental)
+
+The future installation entry point starts **on a prepared Proxmox VE host**:
+a preflighted script creates a dedicated, unprivileged Rocky/AlmaLinux LXC
+and starts a localhost-only, SSH-tunneled setup wizard. The wizard currently
+records a non-secret installation draft; it **does not yet install** the
+prerequisite services. Production deployments require independent approval.
+
+See [guided bootstrap and installation gates](docs/BOOTSTRAP.md).
