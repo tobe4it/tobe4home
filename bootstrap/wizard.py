@@ -18,6 +18,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
 DEFAULT_STATE = Path("/var/lib/tobe4home/site.local.json")
+DEFAULT_PREFIX = os.environ.get("TOBE4HOME_CONTAINER_PREFIX", "tobe4home")
+PREFIX_RE = re.compile(r"^[a-z]([a-z0-9-]*[a-z0-9])?$")
+
+def normalized_prefix(raw: str) -> str:
+    prefix = raw.strip().removesuffix("-")
+    if not PREFIX_RE.fullmatch(prefix) or len(prefix) > 57:
+        raise ValueError("Hostname prefix must be lowercase DNS-label characters, up to 57 characters.")
+    return prefix
+
 PHASES = (
     ("00", "Proxmox and network preflight", "Stage-0 LXC; SSH-only administration"),
     ("01", "Recovery bootstrap", "Git checkout, SSH, Ansible, local secrets, offline recovery"),
@@ -36,6 +45,7 @@ def validate(values: dict[str, str]) -> dict[str, str]:
     """Validate nonsecret bootstrap inputs. These are NOT deployment approvals."""
     result = {k: values.get(k, "").strip() for k in (
         "site_label", "base_domain", "timezone", "dns_resolver", "backup_kind")}
+    result["container_prefix"] = normalized_prefix(values.get("container_prefix", DEFAULT_PREFIX))
     if not LABEL_RE.fullmatch(result["site_label"]):
         raise ValueError("Site label must be 2–64 letters, numbers, spaces, dot or hyphen.")
     if not DOMAIN_RE.fullmatch(result["base_domain"]):
@@ -105,6 +115,8 @@ small,li span{{color:gray}} li{{margin-bottom:12px}} li span{{display:block}}
 <form method="post" action="/save">
 <input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">
 <label>Installation label <input name="site_label" maxlength="64" required value="{val('site_label')}" placeholder="Home Lab"></label>
+<label>Container hostname prefix <input name="container_prefix" maxlength="58" required value="{val('container_prefix') or html.escape(DEFAULT_PREFIX,quote=True)}" placeholder="tobe4home-">
+<small>Suggested: tobe4home-. Editable for all future guests; changing it does not rename this setup LXC. VMIDs are independent.</small></label>
 <label>DNS base domain <input name="base_domain" maxlength="253" required value="{val('base_domain')}" placeholder="home.example.org"></label>
 <label>Timezone <input name="timezone" maxlength="80" required value="{val('timezone') or 'Europe/Berlin'}"></label>
 <label>DNS resolver IP <input name="dns_resolver" maxlength="45" required value="{val('dns_resolver')}" placeholder="192.0.2.53"></label>
@@ -160,7 +172,7 @@ def make_handler(state_path: Path):
             if not secrets.compare_digest(params.get("csrf", [""])[0], csrf):
                 return self._reply(403, "Invalid request token", "text/plain; charset=utf-8")
             values = {key: params.get(key, [""])[0] for key in (
-                "site_label", "base_domain", "timezone", "dns_resolver", "backup_kind")}
+                "site_label", "base_domain", "timezone", "dns_resolver", "backup_kind", "container_prefix")}
             try:
                 plan = validate(values)
                 save_plan(state_path, plan)
