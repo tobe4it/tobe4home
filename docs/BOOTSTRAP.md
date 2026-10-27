@@ -57,7 +57,10 @@ ip -br link
 
 If the template is not already present, select an actual available filename
 from `pveam available` and download it manually with `pveam download`.
-Do not assume a template version or filename from this documentation.
+Template names can change; check the local Proxmox template catalog before
+installation. For example, a Proxmox catalog may offer
+`rockylinux-10-default_20251001_amd64.tar.xz` while a more recent Rocky
+10.2 userspace is already supported. Update installed packages after creation.
 
 ## First run (preview, then explicit apply)
 
@@ -70,23 +73,46 @@ git clone https://github.com/tobe4it/tobe4home.git
 cd tobe4home
 # For evaluation, check out the reviewed feature branch/commit explicitly.
 bash bootstrap/bootstrap.sh \
-  --vmid 700 \
-  --template 'local:vztmpl/ACTUAL_ROCKY_10_TEMPLATE.tar.zst' \
-  --storage local-lvm --bridge vmbr0 \
+  --vmid 1000 \
+  --template 'local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz' \
+  --storage local-zfs --bridge vmbr0 \
   --ssh-public-key /root/.ssh/id_ed25519.pub
 
 # Only after checking all displayed preflight information:
 bash bootstrap/bootstrap.sh \
-  --vmid 700 \
-  --template 'local:vztmpl/ACTUAL_ROCKY_10_TEMPLATE.tar.zst' \
-  --storage local-lvm --bridge vmbr0 \
+  --vmid 1000 \
+  --template 'local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz' \
+  --storage local-zfs --bridge vmbr0 \
   --ssh-public-key /root/.ssh/id_ed25519.pub --apply
 ```
 
-The VMID `700` and other names above are examples, not reserved defaults.
-The script refuses existing CT/VM IDs cluster-wide. Do not use any CT ID
-reserved for migrated legacy workloads. Template name must be replaced with a
-real cache file; this example deliberately cannot be executed unchanged.
+The VMID `1000` is a **tobe4home numbering convention**, not a hardcoded
+requirement. Prefer an installation-specific free `1000–1999` range; retain
+other VMID ranges for existing deployments and legacy guests.
+
+| VMIDs | Planned use |
+| --- | --- |
+| 1000 | Setup wizard / recovery entry point |
+| 1001–1099 | Core services, Ansible, internal Git, identity |
+| 1100–1199 | AI, coding agents, Langflow |
+| 1200–1899 | Optional family services |
+| 1900–1999 | Development and test instances |
+
+The script rejects occupied VMIDs cluster-wide; **recheck at deployment
+time** because the earlier cluster listing may be stale. The exact Proxmox
+bridge, storage and SSH public-key path are site-dependent examples and must
+be verified from the target node. The named Rocky 10 template is the currently
+listed official Proxmox template; verify availability and download it before
+invoking this script. The template is a base snapshot, not a promise that
+its included packages match the newest Rocky 10 minor release. Update the
+new LXC to the latest supported 10.x minor and security errata.
+
+**Default OS: Rocky Linux 10** (latest supported 10.x minor). Rocky Linux
+9 is a documented compatibility fallback only. Rocky Linux 10 on AMD64
+requires x86-64-v3: verify host CPU support first (and for later VMs ensure
+the virtual CPU model exposes it). For Podman, SELinux enforcing and
+isolation-sensitive application workloads, prefer an RHEL-compatible
+virtual machine if the required properties cannot be guaranteed in LXC.
 
 The script leaves the newly created CT intact after partial failures for
 inspection rather than destroying it. Use `pct exec <VMID> -- journalctl -u
