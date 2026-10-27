@@ -1,0 +1,32 @@
+{
+  "node": "example-pve",
+  "vmids": [
+    1000,
+    1001,
+    1004
+  ],
+  "bridges": [
+    "vmbr3"
+  ],
+  "templates": [
+    "local:vztmpl/rockylinux-10-default_20251001_amd64.tar.xz"
+  ],
+  "storages": {
+    "local-zfs": {
+      "active": true,
+      "content": [
+        "rootdir",
+        "images"
+      ],
+      "free_gb": 180
+    }
+  },
+  "free_mb": 20000,
+  "cores_available": 16,
+  "existing_services": {
+    "model": {
+      "verified": true,
+      "endpoint": "https://models.example.invalid"
+    }
+  }
+}
