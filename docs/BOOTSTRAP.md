@@ -130,6 +130,47 @@ This selection is for access to the new setup LXC, **not** for obtaining or
 granting privileged access to Proxmox. The network still needs to allow
 SSH from the admin workstation or an explicitly permitted jump host.
 
+## Stage-1 guided UI: first navigable end-to-end planning flow
+
+After the site-local configuration is saved, the actual HTTPS wizard now
+redirects **to a separate inventory step** (`/discovery`) rather than
+returning to the same form. The next link opens `/plan`, a review of the
+saved values and the planned recovery / backup / Forgejo stages. The
+navigation is reversible and all pages require the same existing HTTPS
+setup authentication. Saved configuration persists across wizard restarts.
+
+The inventory is **real but intentionally scoped to the unprivileged
+setup LXC**: guest hostname, `/etc/os-release`, `eth0` IPv4, and the DNS
+resolver/source. No Proxmox host root access, remote NAS discovery or
+unapproved network scan is performed. Every displayed value is HTML-escaped.
+
+These are the first three navigable stages of the **planning UI**, not
+deployed infrastructure: the actual Ansible/Recovery executor still needs
+a separately implemented, permission-bounded adapter with independent
+approval gates. The plan page clearly marks stages 1+ as not implemented;
+it offers no misleading Install action or write-capable API.
+
+### Apply new wizard UI to an existing test guest
+
+Updating GitHub does not update an already installed LXC.
+After reviewing the new commit on the development branch, the operator can
+update only the wizard file in CT 1000; do **not** rerun the stage-0 installer.
+Its data, TLS certificate and setup code remain unchanged:
+
+```bash
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo python3 -m py_compile /root/tobe4home-bootstrap/bootstrap/wizard.py
+sudo pct exec 1000 -- cp -a /opt/tobe4home/wizard.py /opt/tobe4home/wizard.py.before-flow
+sudo pct push 1000 /root/tobe4home-bootstrap/bootstrap/wizard.py \
+  /opt/tobe4home/wizard.py --perms 0644
+sudo pct exec 1000 -- systemctl restart tobe4home-wizard.service
+sudo pct exec 1000 -- systemctl is-active tobe4home-wizard.service
+```
+
+Open the internal HTTPS URL, authenticate with the existing test setup
+credentials, then choose **Speichern und weiter zur Bestandsaufnahme**.
+The reviewed draft is local-only and is never uploaded to public GitHub.
+
 ## DNS resolver suggestion in the live setup wizard
 
 The stage-0 web wizard now automatically proposes the DNS server of the new
