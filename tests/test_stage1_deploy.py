@@ -30,6 +30,24 @@ class Stage1InstallerTests(unittest.TestCase):
         self.assertNotIn("rm -rf", script)
         self.assertNotIn("--privileged 1", script)
 
+    def test_wizard_plan_links_to_first_real_controller_install(self):
+        import importlib.util
+        source = SCRIPT.parent / "wizard.py"
+        spec = importlib.util.spec_from_file_location("stage1_wizard", source)
+        wizard = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(wizard)
+        values = {
+            "site_label": "Home Lab", "container_prefix": "tb4h",
+            "base_domain": "lab.example.org", "timezone": "Europe/Berlin",
+            "dns_resolver": "192.0.2.53", "backup_kind": "nas"}
+        plan = wizard.render_plan(values)
+        self.assertIn('href="/infrastructure"', plan)
+        handoff = wizard.render_infrastructure(values)
+        self.assertIn('deploy-ansible-controller.sh', handoff)
+        self.assertIn("DEPLOY 1001", handoff)
+        self.assertIn("--apply", handoff)
+        self.assertIn("delegierte Proxmox-API-Berechtigung", handoff)
+
     def test_no_implicit_network_or_storage_selection(self):
         script = SCRIPT.read_text()
         self.assertIn('BRIDGE=""', script)
