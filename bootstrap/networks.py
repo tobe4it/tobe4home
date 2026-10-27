@@ -122,13 +122,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--list", action="store_true")
+    mode.add_argument("--json", action="store_true", help="Machine-readable read-only bridge candidates")
     mode.add_argument("--select", action="store_true")
     mode.add_argument("--validate", metavar="BRIDGE")
     parser.add_argument("--tag", type=int)
     args = parser.parse_args()
     try:
         bridges = discover()
-        if args.list:
+        if args.json:
+            print(json.dumps(bridges, sort_keys=True))
+        elif args.list:
             display(bridges, file=sys.stdout)
         elif args.select:
             name, tag = pick(bridges)
