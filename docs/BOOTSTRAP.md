@@ -49,7 +49,6 @@ login. Take a backup of the Proxmox host's relevant configuration.
 Discover storage/bridge/template **on your actual node**:
 
 ```bash
-pveam update
 pveam available --section system | grep -Ei 'rocky|alma'
 pveam list local
 pvesm status
@@ -64,33 +63,53 @@ VMID/network eligibility before creating the guest. If the template catalog
 is unavailable, do not substitute an unverified URL. Update guest packages
 after installation to the current supported Rocky Linux 10 minor release.
 
-## First run (preview, then explicit apply)
+## First run: one command, guided choices, explicit approval
 
-Clone this repository on the Proxmox host from a **reviewed commit**; never
-pipe downloaded code into a root shell. Use an unused VMID and adjust all
-placeholders to the real host's configuration:
+The guided entry point is `bootstrap/launch.sh`. It runs on an existing
+Proxmox node, discovers the cluster VMID allocation read-only, proposes the
+first free number in 1000–1999, and collects a guest hostname prefix, rootfs
+storage, bridge, optional VLAN and an existing public SSH key.
+
+Until PR #1 is merged and a verified release is published, use the **reviewed
+development branch only on a test host**:
 
 ```bash
-git clone https://github.com/tobe4it/tobe4home.git
-cd tobe4home
-# For evaluation, check out the reviewed feature branch/commit explicitly.
-bash bootstrap/bootstrap.sh \
-  --vmid 1000 --storage local-zfs \
-  --ssh-public-key /root/.ssh/id_ed25519.pub
+git clone --depth 1 --branch feat/bootstrap-setup-wizard-20261027 https://github.com/tobe4it/tobe4home.git /root/tobe4home-bootstrap && bash /root/tobe4home-bootstrap/bootstrap/launch.sh
+```
 
-# Review the detected networks and proposed name prefix.
-# Only after approving the plan, repeat with --apply:
-bash bootstrap/bootstrap.sh \
-  --vmid 1000 --storage local-zfs \
-  --ssh-public-key /root/.ssh/id_ed25519.pub --apply
+The entry command downloads the Git repository but does **not** pipe a network
+response straight into a root shell. The branch can change: review the commit
+SHA and source prior to execution. The installation must only be used for a
+real Proxmox test after PR checks and operator approval. Do not run unreviewed
+changes on live infrastructure.
 
-# Noninteractive equivalent with an explicitly selected network and prefix:
+The interactive flow displays one combined **read-only preflight plan** and
+then demands the exact phrase `INSTALL <VMID>`. Only after approval does it
+download the official Rocky Linux 10 template (if not already cached) and
+attempt to create the one unprivileged setup guest.
+
+For repeat operation from an existing reviewed checkout:
+
+```bash
+bash /root/tobe4home-bootstrap/bootstrap/launch.sh
+```
+
+For automation or a custom environment you may also invoke the underlying
+`bootstrap/bootstrap.sh` directly with explicit options. Without `--apply`,
+this is a read-only preflight:
+
+```bash
 bash bootstrap/bootstrap.sh \
   --vmid 1000 --storage local-zfs \
   --bridge vmbr2 --vlan-tag 42 \
   --container-prefix house- \
   --ssh-public-key /root/.ssh/id_ed25519.pub
 ```
+
+Those bridge/VLAN/key values are **illustrative only**. The production
+network must be chosen based on actual management access, DHCP, routing,
+package repositories and firewall restrictions. Do not assume that vmbr2
+is VLAN 2 or that a Proxmox host IP proves guest reachability.
 
 The VMID `1000` is a **tobe4home numbering convention**, not a hardcoded
 requirement. Prefer an installation-specific free `1000–1999` range; retain
