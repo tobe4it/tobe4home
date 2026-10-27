@@ -109,6 +109,61 @@ class WizardTests(unittest.TestCase):
         self.assertIn('default="0.0.0.0"', script)
         self.assertIn("def _require_auth(self)", script)
 
+    def test_dns_sources_are_parsed_without_guessing(self):
+        self.assertEqual(wizard.parse_dhcp_dns(
+            "GENERAL.DEVICE: eth0\\n"
+            "DHCP4.OPTION[1]: domain_name_servers = 10.50.0.53 10.50.0.54\\n"
+            "IP4.DNS[1]: 203.0.113.1\\n"),
+            ["10.50.0.53", "10.50.0.54"])
+        self.assertEqual(wizard.parse_dhcp_dns("IP4.DNS[1]: 203.0.113.1"),
+                         [])
+        self.assertEqual(wizard.parse_resolv_conf(
+            "# --- BEGIN PVE ---\\nnameserver 127.0.0.53\\n"
+            "nameserver 10.50.0.53\\nnameserver 10.50.0.53\\n"),
+            ["10.50.0.53"])
+        self.assertEqual(wizard.parse_resolv_conf("nameserver 127.0.0.1"), [])
+
+    def test_dhcp_suggestion_is_labeled_and_different_effective_dns_warns(self):
+        import subprocess
+        from unittest.mock import patch
+        command = subprocess.CompletedProcess(
+            [], 0,
+            "DHCP4.OPTION[1]: domain_name_servers = 10.50.0.53\\n", "")
+        with patch.object(wizard.subprocess, "run", return_value=command), \\
+                patch.object(wizard.Path, "read_text",
+                             return_value="# --- BEGIN PVE ---\\nnameserver 10.50.0.1\\n"):
+            info = wizard.detect_network_dns()
+        self.assertEqual(info["value"], "10.50.0.53")
+        self.assertIn("DHCP", info["source"])
+        self.assertIn("Achtung", info["warning"])
+
+    def test_effective_resolver_fallback_not_mislabeled_dhcp(self):
+        import subprocess
+        from unittest.mock import patch
+        command = subprocess.CompletedProcess([], 127, "", "not installed")
+        with patch.object(wizard.subprocess, "run", return_value=command), \\
+                patch.object(wizard.Path, "read_text",
+                             return_value="# --- BEGIN PVE ---\\nnameserver 10.50.0.53\\n"):
+            info = wizard.detect_network_dns()
+        self.assertEqual(info["value"], "10.50.0.53")
+        self.assertIn("nicht bestätigt", info["source"])
+
+    def test_dns_prefill_respects_saved_value_and_escapes_source(self):
+        discovered = {"value": "10.50.0.53",
+                      "source": "DHCP-Option 6 (eth0)",
+                      "warning": ""}
+        page = wizard.render({}, "token", dns_suggestion=discovered)
+        self.assertIn('name="dns_resolver"', page)
+        self.assertIn('value="10.50.0.53"', page)
+        self.assertIn("DHCP-Option 6 (eth0)", page)
+        saved = wizard.render(dict(GOOD), "token", dns_suggestion=discovered)
+        self.assertIn('value="192.0.2.53"', saved)
+        self.assertNotIn('value="10.50.0.53"', saved)
+        suspicious = dict(discovered, source="<script>alert(1)</script>")
+        escaped = wizard.render({}, "token", dns_suggestion=suspicious)
+        self.assertNotIn("<script>", escaped)
+        self.assertIn("&lt;script&gt;", escaped)
+
     def test_all_prerequisites_are_present(self):
         names = [name for _, name, _ in wizard.PHASES]
         self.assertEqual(len(names), 7)
