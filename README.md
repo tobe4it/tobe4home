@@ -48,9 +48,13 @@ unprivileged Rocky Linux 10 LXC with 4 vCPU, 4096 MiB RAM, 40 GiB
 rootfs and onboot disabled while testing.
 
 Once CT 1001 is created, the installer checks guest DNS and starts
-the officially published **AnsibleForms 7.4.2 native/systemd**
-installer (verified AMD64 binary + SHA-256). The upstream installer
-installs MariaDB and an independent Ansible Runtime Environment. The
+a **source-patched AnsibleForms 7.4.2 native/systemd installer**.
+The script verifies the immutable official upstream Git commit
+`ae60b31742ee5bd6956f9bf9798fd5b5356ccf42`, builds it using
+Go 1.27.2 with upstream Go module checksums, and changes only the Node
+version-selection function to force `v26.12.1`. The downloaded Node
+archive is still verified by the original official SHA-256 procedure.
+AnsibleForms installs MariaDB and an independent Ansible Runtime Environment. The
 web portal is expected on HTTPS port 443. No Docker or Podman nesting
 is required for this first run. The generated admin password is printed
 to the operator; do not post it in public logs.
@@ -72,22 +76,28 @@ This is not a Proxmox, Rocky DNF or ZFS error. The immediately previous
 run had selected v26.12.1; the upstream installer selects the highest
 Node.js 26 release **at runtime** rather than a fixed patch version.
 
-**The new fail-closed gate prevents another half-created guest.** Before
-the SSH key prompt or creating CT1001, the host uses
-`bootstrap/check-node-runtime.py` to check the same highest published
-Node 26 version and require the official SHA-256 manifest and matching
-Linux x64 archive. The same check is repeated inside the guest immediately
-before running AnsibleForms. Missing assets or mismatched checksums
-**fail before** attempting the native install; the upstream installer
-continues to verify SHA-256 when it actually downloads the runtime.
+**Resolved for tobe4home with a pinned-source installer build.**
+The original official binary cannot accept a specific Node 26 patch
+version; preinstalling Node does not override its `latestNode` selector.
+The bootstrap now verifies the original **AnsibleForms v7.4.2 source
+commit SHA**, uses `Go 1.27.2` and the upstream module sums to compile
+the installer, and applies a very narrow source patch to `latestNode`.
+When `TOBE4HOME_NODE_VERSION=v26.12.1` is present, the installer
+selects exactly that version. It refuses any other pin and performs its
+original SHA-256-verified Node archive download.
 
-Never silently replace the upstream-selected release with an older
-runtime under a misleading version directory or disable the upstream
-checksums. A currently incomplete upstream release will still block
-the new bootstrap; it can proceed only when the official artifacts
-are consistently published. The gate protects the PVE host and keeps
-the failure diagnostic and reproducible, but does **not** itself make
-Node.js 26.13.0 available.
+The preflight checks the official **v26.12.1** SHA-256 manifest and
+linux-x64 tarball on both the Proxmox host (before VMID allocation) and
+inside the new guest (immediately before install). It does not consult
+the inconsistent `latest` index. All software remains downloaded from
+the original trusted origins; no Node tarballs or secrets are committed
+to Git, and the container remains unprivileged.
+
+**This native installer binary is locally built from a verified official
+source commit with a reviewed one-function patch; it is not identical
+to the official published binary.** The GitHub CI independently compiles
+the same patched Go source to catch build regressions. The next live
+Proxmox clean-install and browser login must still pass acceptance.
 
 For a deliberately disposable CT1001 from the failed attempt, run the
 guarded `bootstrap/reset-controller.sh` preview and confirmed destroy,
