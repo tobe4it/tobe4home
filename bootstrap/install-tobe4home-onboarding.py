@@ -99,7 +99,15 @@ def install_asset(source: Path, target: Path, uid: int, gid: int) -> str:
             writer.flush()
             os.fsync(writer.fileno())
         fd = -1
-        if target.exists() or target.is_symlink():
+        if upgrading:
+            # Check the previous published bytes again directly before the
+            # atomic replacement; never replace a subsequent operator edit.
+            st = target.lstat()
+            if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                raise ValueError("Destination changed during upgrade")
+            if not approved_previous_blob(target.name, stage_bytes(target)):
+                raise ValueError("Destination was modified during upgrade")
+        elif target.exists() or target.is_symlink():
             raise ValueError("Destination appeared during asset deployment")
         os.replace(temp, target)
     finally:
