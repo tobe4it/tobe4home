@@ -61,6 +61,39 @@ state/approval/executor gateway, CI and guest configuration workflows
 still require actual integration and acceptance. No additional guests
 are created by this bootstrap.
 
+### Verified clean reset of disposable CT1001
+
+For a deliberately discarded, partially installed test controller, use
+the dedicated guarded reset tool instead of an unrestricted `pct destroy`
+or `rm -rf`. It verifies the existing VMID, normalized exact ownership
+tags, `tb4h-controller` hostname, unprivileged status, rootfs identity,
+cluster node, and lack of custom mountpoints or other non-bootstrap
+configuration. The default mode is **read-only**. Actual deletion requires
+a separate `--destroy` invocation and the literal `DELETE 1001`.
+
+```bash
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo bash /root/tobe4home-bootstrap/bootstrap/reset-controller.sh
+sudo bash /root/tobe4home-bootstrap/bootstrap/reset-controller.sh --destroy
+# Type DELETE 1001 only after inspecting its exact identity and rootfs.
+sudo pct list
+```
+
+The script gracefully shuts down only CT1001 before issuing Proxmox's
+`pct destroy 1001`. It **does not** use `--purge`,
+`--destroy-unreferenced-disks`, `--force` or recursive filesystem
+removal. Proxmox-managed CT1001 rootfs and CT-specific firewall/ACL
+records are removed; external vzdump/PBS backups are not deleted.
+If CT1001 has additional drives, bind mounts, snapshots, hooks,
+unrecognized config fields or a mismatched identity, the reset fails
+closed for manual review. Any residual `/var/lib/lxc/1001` files are
+handled only by the separately reviewed clean-bootstrap quarantine
+logic after `INSTALL 1001`.
+
+**All in-guest AnsibleForms passwords, initial admin credentials and
+database contents in CT1001 will be lost.** Only do this for a disposable
+bootstrap test, never an established controller.
+
 ### Next clean-install attempt on Proxmox
 
 ```bash
