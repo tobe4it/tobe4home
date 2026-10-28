@@ -74,13 +74,14 @@ class AdminKeyTests(unittest.TestCase):
 
     def test_installer_stages_only_public_key(self):
         tui = (ROOT / "bootstrap" / "installer-tui.sh").read_text()
-        cli = (ROOT / "bootstrap" / "launch.sh").read_text()
+        cli = (ROOT / "bootstrap" / "single-controller.sh").read_text()
         self.assertIn('ssh_keys.py', tui)
         self.assertIn('"$KEY_HELPER" --list', tui)
         self.assertIn('"$KEY_HELPER" --export', tui)
         self.assertIn('trap \'rm -rf -- "$KEY_TEMP_DIR"\' EXIT', tui)
         self.assertIn('ssh_keys.py', cli)
         self.assertIn('"$KEY_HELPER" --interactive', cli)
+        self.assertIn('trap \'rm -rf -- "$KEY_TEMP_DIR"\' EXIT', cli)
 
 
 if __name__ == "__main__":
