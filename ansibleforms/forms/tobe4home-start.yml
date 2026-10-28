@@ -36,14 +36,32 @@
     - name: home_goal
       type: enum
       label: "Wobei soll tobe4home zuerst helfen?"
-      values: [familie, smart_home, beides]
+      values:
+        - id: familie
+          text: "Dateien, Dokumente und Familienwissen"
+        - id: smart_home
+          text: "Das Zuhause automatisieren"
+        - id: beides
+          text: "Beides miteinander verbinden"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
       default: familie
       required: true
       help: "familie = Dateien, Dokumente und gemeinsames Wissen; smart_home = Hausautomation; beides = Kombination"
     - name: experience
       type: enum
       label: "Wie viel Erfahrung haben Sie mit Heimservern?"
-      values: [einsteiger, etwas_erfahrung, erfahren]
+      values:
+        - id: einsteiger
+          text: "Ich beginne gerade"
+        - id: etwas_erfahrung
+          text: "Ich habe erste Erfahrungen"
+        - id: erfahren
+          text: "Ich betreibe bereits Heimserver"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
       default: einsteiger
       required: true
 - name: tb4h_start_environment
@@ -53,14 +71,30 @@
     - name: proxmox_available
       type: enum
       label: "Ist Proxmox bereits auf Ihrem Server installiert?"
-      values: [ja, weiss_nicht]
+      values:
+        - id: ja
+          text: "Ja, Proxmox ist installiert"
+        - id: weiss_nicht
+          text: "Ich bin mir nicht sicher"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
       default: ja
       required: true
       help: "Dieser erste Bootstrap setzt einen bestehenden Proxmox-Host voraus."
     - name: existing_services
       type: enum
       label: "Laufen auf dem Server bereits andere Anwendungen?"
-      values: [ja, nein, weiss_nicht]
+      values:
+        - id: ja
+          text: "Ja"
+        - id: nein
+          text: "Nein"
+        - id: weiss_nicht
+          text: "Ich weiß es nicht"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
       default: weiss_nicht
       required: true
       help: "Vorhandene Anwendungen werden bei der Vorschau weder geändert noch gelöscht."
@@ -71,13 +105,31 @@
     - name: backup_available
       type: enum
       label: "Gibt es bereits eine Datensicherung außerhalb des Servers?"
-      values: [ja, nein, weiss_nicht]
+      values:
+        - id: ja
+          text: "Ja"
+        - id: nein
+          text: "Nein"
+        - id: weiss_nicht
+          text: "Ich weiß es nicht"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
       default: weiss_nicht
       required: true
     - name: access_scope
       type: enum
       label: "Von wo aus sollen Ihre Dienste später erreichbar sein?"
-      values: [nur_zuhause, auch_unterwegs, weiss_nicht]
+      values:
+        - id: nur_zuhause
+          text: "Nur von zu Hause"
+        - id: auch_unterwegs
+          text: "Auch unterwegs"
+        - id: weiss_nicht
+          text: "Das möchte ich später entscheiden"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
       default: nur_zuhause
       required: true
       help: "Öffentlicher Zugriff wird nicht automatisch eingerichtet."
