@@ -58,10 +58,8 @@ jobs:
           work="$(mktemp -d)"
           trap 'rm -rf -- "$work"' EXIT
           cp ansibleforms/playbooks/tb4h-service-plan-preview.yml "$work/"
-          printf '%s\\n' '{"schema":1,"source":"proxmox-host-readonly","collected_at_utc":"2026-10-28T18:00:00+00:00","lxc":{"total":2,"running":1},"qemu":{"total":0,"running":0}}' > "$work/tb4h-proxmox-snapshot.json"
-          ansible-playbook -i localhost, "$work/tb4h-service-plan-preview.yml" \\
-            -e '{"service_kind":"dns_filter","request_text":"Ein lokaler DNS-Filter mit Listenpflege ohne externe Anmeldung","access_scope":"nur_zuhause"}' |
-            tee "$work/result.log"
+          echo '{"schema":1,"source":"proxmox-host-readonly","collected_at_utc":"2026-10-28T18:00:00+00:00","lxc":{"total":2,"running":1},"qemu":{"total":0,"running":0}}' > "$work/tb4h-proxmox-snapshot.json"
+          ansible-playbook -i localhost, "$work/tb4h-service-plan-preview.yml" -e '{"service_kind":"dns_filter","request_text":"Ein lokaler DNS-Filter mit Listenpflege ohne externe Anmeldung","access_scope":"nur_zuhause"}' | tee "$work/result.log"
           grep -q 'changed=0' "$work/result.log"
           grep -q 'LLM-Anbindung' "$work/result.log" || grep -q 'NICHT ANGEBUNDEN' "$work/result.log"
 
