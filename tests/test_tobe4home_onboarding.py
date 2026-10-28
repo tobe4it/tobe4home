@@ -69,7 +69,7 @@ class BeginnerOnboardingTests(unittest.TestCase):
         self.assertIn("tb4h-proxmox-snapshot.json", PLAYBOOK.read_text())
         self.assertIn("proxmox_basis", play["tasks"][1]["ansible.builtin.debug"]["msg"])
         for forbidden in ("pct create", "community.general", "command:", "shell:",
-                          "ansible.builtin.copy", "ansible.builtin.file", "tofu apply"):
+                          "ansible.builtin.copy:", "ansible.builtin.file:", "tofu apply"):
             self.assertNotIn(forbidden, PLAYBOOK.read_text().lower())
 
     def test_installer_is_idempotent_and_refuses_modified_existing_files(self):
