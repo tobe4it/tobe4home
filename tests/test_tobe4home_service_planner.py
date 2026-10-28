@@ -113,7 +113,7 @@ class ServicePlannerTests(unittest.TestCase):
 
     def test_exact_original_form_can_upgrade_without_replacing_user_edits(self):
         prior = ORIGINAL_FORM.read_bytes()
-        sha = hashlib.sha1(b"blob " + str(len(prior)).encode() + b"\\x00" + prior,
+        sha = hashlib.sha1(b"blob " + str(len(prior)).encode() + b"\x00" + prior,
                            usedforsecurity=False).hexdigest()
         self.assertEqual(sha, "214c02698a2ea0650551317c97eee6681df62b4a")
         self.assertTrue(module.approved_prior(FORM.name, prior))
