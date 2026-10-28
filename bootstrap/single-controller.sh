@@ -287,9 +287,6 @@ fi
 # Publish the beginner-facing tobe4home first-run wizard on every completed
 # bootstrap and verified --resume. Do not remove upstream example forms or
 # replace existing locally modified files. This stage cannot provision LXCs.
-echo "Installing tobe4home beginner onboarding (preview-only)..."
-pct exec "$VMID" -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
-  die "Cannot safely publish tobe4home setup form; CT1001 preserved"
 # Run only on Proxmox: collect PVE VM/LXC counts with read-only commands.
 # Publish aggregates, not guest identities, IPs or PVE API tokens.
 echo "Erfasse vorhandene Proxmox-Container und VMs (nur lesend)..."
@@ -303,6 +300,9 @@ pct push "$VMID" "$TB4H_INV_FILE" \
   die "Cannot stage guest-count snapshot; CT1001 preserved"
 pct exec "$VMID" -- python3 /var/lib/tobe4home/install-proxmox-snapshot.py ||
   die "Cannot validate or publish Proxmox snapshot; CT1001 preserved"
+echo "Installing tobe4home beginner onboarding (preview-only)..."
+pct exec "$VMID" -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
+  die "Cannot safely publish tobe4home setup form; CT1001 preserved"
 # AnsibleForms caches form definitions; a bounded app-only restart guarantees
 # the novice wizard is loaded, without resetting MariaDB or the RTE.
 pct exec "$VMID" -- systemctl restart ansibleforms ||
