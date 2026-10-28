@@ -119,6 +119,47 @@ sudo bash /root/tobe4home-bootstrap/bootstrap/launch.sh --resume
 # Inspect exact CT1001 identity; type RESUME 1001.
 ```
 
+### Native AnsibleForms file permissions (200/CHDIR) and automatic recovery
+
+The first real native AnsibleForms 7.4.2 controller installation exposed a
+**restrictive umask regression**: `bootstrap/install-ansibleforms-native.sh`
+was invoked with `umask 077`, while upstream uses directory modes such
+as 0755 without forcing them after creation. This produced root-owned
+0700 release/runtime folders. The `ansibleforms` systemd user could not
+enter `/opt/ansibleforms/current/server` and both services restarted with
+`status=200/CHDIR`.
+
+**Fixed for every new bootstrap:** the verified native installer itself
+now runs under `umask 022`, leaving program directories traversable.
+Its credential files use upstream-restricted modes. Future native
+releases must retain this scoped umask rather than overriding global
+host/guest security defaults.
+
+**Automatic, idempotent recovery of an already-created CT 1001:**
+
+```bash
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo bash /root/tobe4home-bootstrap/bootstrap/launch.sh --resume
+# Confirm RESUME 1001 (only the verified existing tb4h-controller)
+```
+
+The resume path detects the existing systemd units, pushes
+`bootstrap/repair-ansibleforms-permissions.py`, repairs only the
+root-owned **release/runtime code paths** that the `ansibleforms` user
+cannot already read/traverse, makes only `app.env` and `rte.env`
+group-readable to the dedicated service group after verifying ownership,
+resets/restarts the two native services, and checks local HTTPS. It
+**never reruns the upstream first-install** when both systemd units
+are present, and does not overwrite the database, generated secrets,
+administrator account, or certificates. Symlink targets are not followed.
+Persistent data, SSH keys, backups and TLS key material are outside the
+repair scope. Unknown code ownership or unexpected permissions fail closed.
+
+The process remains **staged**, not a fully released auto-provisioning
+platform: AnsibleForms login/real workflow validation, OpenTofu backend
+and apply approval, and subsequent independent guest deployments
+must pass real acceptance before unattended bootstrap is enabled.
+
 The new path must still pass a live Proxmox/DNS/LXC/HTTPS acceptance
 test before being called a released installer. The branch is mutable;
 inspect the Git diff and CI before running host-root provisioning.
