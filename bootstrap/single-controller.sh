@@ -286,6 +286,10 @@ fi
 echo "Installing tobe4home beginner onboarding (preview-only)..."
 pct exec "$VMID" -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
   die "Cannot safely publish tobe4home setup form; CT1001 preserved"
+# AnsibleForms caches form definitions; a bounded app-only restart guarantees
+# the novice wizard is loaded, without resetting MariaDB or the RTE.
+pct exec "$VMID" -- systemctl restart ansibleforms ||
+  die "Cannot reload tobe4home welcome form; controller preserved"
 pct exec "$VMID" -- systemctl is-active --quiet mariadb ansibleforms ansibleforms-rte ||
   die "Native AnsibleForms services not all active; CT1001 kept"
 echo "Checking AnsibleForms HTTPS localhost health (self-signed test only)..."
