@@ -82,8 +82,8 @@ class NodeArtifactPreflightTests(unittest.TestCase):
 
     def test_exact_pin_ignores_unavailable_latest_node_release(self):
         pinned_name = "node-v26.12.1-linux-x64.tar.gz"
-        pinned_sums = "b" * 64 + "  " + pinned_name + "\\n"
-        with patch.object(node, "fetch_text", return_value=pinned_sums) as fetch, \\
+        pinned_sums = "b" * 64 + "  " + pinned_name + "\n"
+        with patch.object(node, "fetch_text", return_value=pinned_sums) as fetch, \
              patch.object(node, "check_asset") as asset:
             self.assertEqual(node.check(26, pinned="v26.12.1"), "v26.12.1")
             fetch.assert_called_once_with(
