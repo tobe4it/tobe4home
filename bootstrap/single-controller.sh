@@ -47,7 +47,8 @@ done
    -r "$ROOT/bootstrap/networks.py" &&
    -r "$ROOT/bootstrap/ct1001_remnant.py" &&
    -r "$ROOT/bootstrap/install-ansibleforms-native.sh" &&
-   -r "$ROOT/bootstrap/repair-ansibleforms-permissions.py" ]] ||
+   -r "$ROOT/bootstrap/repair-ansibleforms-permissions.py" &&
+   -r "$ROOT/bootstrap/check-controller-config.py" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
   echo "tobe4home – single Controller CT1001 (no CT1000)"
@@ -185,9 +186,11 @@ assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
 else
   [[ -t 0 && -t 1 ]] || die "Resume requires interactive TTY"
   CFG="$(pct config "$VMID")" || die "CT1001 does not exist"
-  grep -qx 'hostname: tb4h-controller' <<< "$CFG" || die "Unexpected CT1001 hostname"
-  grep -qx 'unprivileged: 1' <<< "$CFG" || die "CT1001 not unprivileged"
-  grep -Eq '^tags: .*tobe4home.*controller' <<< "$CFG" || die "Not the tobe4home controller"
+  # Proxmox normalizes/sorts LXC tags (for example controller;tobe4home).
+  # Check the exact tag *set* and other identity fields before accepting any
+  # resume action, not an incidental substring order from pct create.
+  python3 "$ROOT/bootstrap/check-controller-config.py" <<< "$CFG" ||
+    die "Not the tobe4home controller"
   read -r -p 'Type RESUME 1001 to resume installation in this CT: ' APPROVAL ||
     die "Cancelled"
   [[ "$APPROVAL" == 'RESUME 1001' ]] || die "Cancelled"
