@@ -54,6 +54,8 @@ done
    -r "$ROOT/bootstrap/build-native-installer.sh" &&
    -r "$ROOT/bootstrap/patch-node-pin.py" &&
    -r "$ROOT/bootstrap/install-tobe4home-onboarding.py" &&
+   -r "$ROOT/bootstrap/collect-proxmox-inventory.py" &&
+   -r "$ROOT/bootstrap/install-proxmox-snapshot.py" &&
    -r "$ROOT/ansibleforms/forms/tobe4home-start.yml" &&
    -r "$ROOT/ansibleforms/playbooks/tb4h-onboarding-preview.yml" ]] ||
    die "Checkout incomplete"
@@ -250,6 +252,8 @@ pct push "$VMID" "$ROOT/bootstrap/patch-node-pin.py" \
 # Stage these separately, install only reviewed tobe4home-owned filenames.
 pct push "$VMID" "$ROOT/bootstrap/install-tobe4home-onboarding.py" \
   /var/lib/tobe4home/install-tobe4home-onboarding.py --perms 0700
+pct push "$VMID" "$ROOT/bootstrap/install-proxmox-snapshot.py" \
+  /var/lib/tobe4home/install-proxmox-snapshot.py --perms 0700
 pct push "$VMID" "$ROOT/ansibleforms/forms/tobe4home-start.yml" \
   /var/lib/tobe4home/tobe4home-start.yml --perms 0600
 pct push "$VMID" "$ROOT/ansibleforms/playbooks/tb4h-onboarding-preview.yml" \
@@ -286,6 +290,19 @@ fi
 echo "Installing tobe4home beginner onboarding (preview-only)..."
 pct exec "$VMID" -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
   die "Cannot safely publish tobe4home setup form; CT1001 preserved"
+# Run only on Proxmox: collect PVE VM/LXC counts with read-only commands.
+# Publish aggregates, not guest identities, IPs or PVE API tokens.
+echo "Erfasse vorhandene Proxmox-Container und VMs (nur lesend)..."
+TB4H_INV_FILE="$(mktemp /tmp/tb4h-inventory.XXXXXXXX)" ||
+  die "Cannot allocate private host inventory staging file"
+trap 'rm -f -- "${TB4H_INV_FILE:-/dev/null}"' EXIT
+python3 "$ROOT/bootstrap/collect-proxmox-inventory.py" > "$TB4H_INV_FILE" ||
+  die "Read-only Proxmox inventory failed; CT1001 preserved"
+pct push "$VMID" "$TB4H_INV_FILE" \
+  /var/lib/tobe4home/tb4h-proxmox-snapshot.json --perms 0600 ||
+  die "Cannot stage guest-count snapshot; CT1001 preserved"
+pct exec "$VMID" -- python3 /var/lib/tobe4home/install-proxmox-snapshot.py ||
+  die "Cannot validate or publish Proxmox snapshot; CT1001 preserved"
 # AnsibleForms caches form definitions; a bounded app-only restart guarantees
 # the novice wizard is loaded, without resetting MariaDB or the RTE.
 pct exec "$VMID" -- systemctl restart ansibleforms ||
