@@ -69,7 +69,19 @@ def classify(path: Path, mounts: list[str] | None = None) -> tuple[str, str]:
     if not names:
         return "EMPTY", "Empty ordinary runtime directory"
     if names != ["passthrough", "rules.seccomp"]:
-        return "FAIL", "Unexpected runtime entries: " + repr(names[:12])
+        summary = []
+        for name in names[:12]:
+            item = path / name
+            try:
+                mode = item.lstat().st_mode
+                kind = ("symlink" if stat.S_ISLNK(mode)
+                        else "directory" if stat.S_ISDIR(mode)
+                        else "file" if stat.S_ISREG(mode) else "other")
+            except OSError:
+                kind = "unknown"
+            summary.append(f"{name[:72]!r} ({kind})")
+        return ("FAIL", "Nonempty LXC runtime directory; entries: " +
+                ", ".join(summary) + "; never remove recursively")
     try:
         file_info = (path / "rules.seccomp").lstat()
         subdir_info = (path / "passthrough").lstat()
@@ -129,7 +141,13 @@ def quarantine(
             raise ValueError("Runtime remnant has unexpected ownership")
     # Parent is intentionally outside /var/lib/lxc to avoid Proxmox
     # discovering a pseudo-container under its runtime directory.
-    destination_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Refuse nonstandard parent paths and any symlink in the destination
+    # tree. Do not create private artifacts in a redirected location.
+    parent = destination_root.parent
+    if parent.is_symlink() or not parent.is_dir() or parent.lstat().st_uid != os.geteuid():
+        raise ValueError("Quarantine parent must be a real operator-owned directory")
+    if not destination_root.exists():
+        destination_root.mkdir(mode=0o700)
     if destination_root.is_symlink() or not destination_root.is_dir():
         raise ValueError("Quarantine location is not a real directory")
     dest_stat = destination_root.lstat()
