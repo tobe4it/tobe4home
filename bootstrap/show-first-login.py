@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Show the initial AnsibleForms login ONLY at the end of a healthy bootstrap.
 
-Execute as guest root via pct exec 1001 in an attended host TTY.
+Execute as guest root via pct exec 1001 from an attended host TTY.
 Read only ADMIN_USERNAME and ADMIN_PASSWORD, never the full app.env.
 Do not log, persist, send over the network, or put credentials on argv.
 The initial password can become obsolete after an operator changes it.
@@ -96,8 +96,8 @@ def main(argv=None) -> int:
     parser.add_argument("--ip", required=True, help="Guest IPv4, not a password")
     args = parser.parse_args(argv)
     try:
-        if os.geteuid() != 0 or not sys.stdout.isatty():
-            raise ValueError("Credential display requires attended root terminal")
+        if os.geteuid() != 0:
+            raise ValueError("Credential display requires root inside CT1001")
         if Path("/etc/hostname").read_text(encoding="utf-8").strip() != EXPECTED_HOSTNAME:
             raise ValueError("Wrong controller hostname")
         if pwd.getpwnam("ansibleforms").pw_uid == 0:
