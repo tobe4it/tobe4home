@@ -33,6 +33,11 @@ class BeginnerOnboardingTests(unittest.TestCase):
         self.assertIn("noch nicht implementiert", first["help"])
         self.assertEqual(len(first["wizard"]), 3)
         self.assertEqual(len({f["name"] for f in forms}), 4)
+        # The only supported bootstrap requires a verified Proxmox host.
+        self.assertNotIn("proxmox_available", FORM.read_text().lower())
+        self.assertNotIn("Ist Proxmox", FORM.read_text())
+        self.assertIn("Proxmox ist bereits", first["help"])
+        self.assertEqual(len(forms[2]["fields"]), 1)
         for subform in forms[1:]:
             self.assertEqual(subform["type"], "subform")
             for field in subform["fields"]:
@@ -57,6 +62,8 @@ class BeginnerOnboardingTests(unittest.TestCase):
             self.assertNotIn("become", task)
             self.assertTrue(set(task.keys()) & {"ansible.builtin.assert", "ansible.builtin.debug"})
             self.assertFalse(task.get("changed_when", True))
+        self.assertNotIn("proxmox_available", PLAYBOOK.read_text().lower())
+        self.assertIn("proxmox_basis", play["tasks"][1]["ansible.builtin.debug"]["msg"])
         for forbidden in ("pct create", "community.general", "command:", "shell:",
                           "ansible.builtin.copy", "ansible.builtin.file", "tofu apply"):
             self.assertNotIn(forbidden, PLAYBOOK.read_text().lower())
@@ -80,6 +87,30 @@ class BeginnerOnboardingTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "refusing replacement"):
                     mod.deploy(stage, data, os.getuid() or 1001, os.getgid() or 1001)
                 self.assertEqual(existing.read_text(), "operator changed this form and should be preserved")
+
+    def test_exact_previous_release_can_be_updated_but_not_arbitrary_edits(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            old = b"# previously shipped, unmodified tobe4home welcome form\n"
+            new = b"# reviewed tobe4home welcome form without Proxmox question\n"
+            (path / "source").write_bytes(new)
+            (path / "tobe4home-start.yml").write_bytes(old)
+            header = b"blob " + str(len(old)).encode() + b"\x00"
+            digest = hashlib.sha1(header + old, usedforsecurity=False).hexdigest()
+            with patch.dict(mod.PREVIOUS_GIT_BLOBS, {
+                "tobe4home-start.yml": frozenset({digest})
+            }):
+                with patch.object(mod.os, "fchown"):
+                    changed = mod.install_asset(path / "source",
+                                                path / "tobe4home-start.yml",
+                                                1001, 1001)
+            self.assertEqual(changed, "UPDATED")
+            self.assertEqual((path / "tobe4home-start.yml").read_bytes(), new)
+            (path / "tobe4home-start.yml").write_text("operator-edited form that must not be replaced")
+            with self.assertRaisesRegex(ValueError, "refusing replacement"):
+                mod.install_asset(path / "source", path / "tobe4home-start.yml",
+                                  1001, 1001)
 
     def test_symlink_target_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
