@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import stat
 import subprocess
 import sys
 
@@ -53,6 +54,30 @@ def zfs_pool_for_storage(cfg: str, storage: str) -> str | None:
     return None
 
 
+def classify_runtime_dir(path: Path) -> tuple[str, str]:
+    """Inspect only; never remove existing Proxmox/LXC runtime data.
+
+    An empty ordinary directory left after pct destroy may be removed with
+    rmdir *after* explicit installation approval. Symlinks, files and
+    nonempty directories are never treated as harmless remnants.
+    """
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return "PASS", "No existing LXC runtime path"
+    except OSError as exc:
+        return "FAIL", f"Cannot inspect runtime path: {exc.strerror}"
+    if not stat.S_ISDIR(info.st_mode):
+        return "FAIL", "Unexpected non-directory or symbolic link; inspect manually"
+    try:
+        with os.scandir(path) as entries:
+            if next(entries, None) is not None:
+                return "FAIL", "Nonempty LXC runtime directory; inspect contents, never remove recursively"
+    except OSError as exc:
+        return "FAIL", f"Cannot inspect LXC runtime contents: {exc.strerror}"
+    return "WARN", "Empty LXC runtime directory; safe to rmdir only after guest creation approval"
+
+
 def report(storage: str, vmid: int) -> dict:
     checks: list[dict[str, str]] = []
 
@@ -84,9 +109,8 @@ def report(storage: str, vmid: int) -> dict:
         "Tested isolated uid/gid mapping 0→100000 (not a rootfs write test)")
 
     ct_dir = Path(f"/var/lib/lxc/{vmid}")
-    add("Stale LXC directory", "FAIL" if ct_dir.exists() else "PASS",
-        "Existing /var/lib/lxc/<VMID> must be inspected before retrying" if ct_dir.exists()
-        else "No existing LXC directory detected")
+    status, detail = classify_runtime_dir(ct_dir)
+    add("Stale LXC directory", status, detail)
     # A failed pct create may remove the VMID config but leave a ZFS volume.
     # Read-only check; never delete volumes or reuse the name implicitly.
     rc, volumes = command(["pvesm", "list", storage, "--content", "rootdir"])
