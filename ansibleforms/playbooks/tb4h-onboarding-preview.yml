@@ -1,0 +1,35 @@
+---
+# Read-only onboarding for novice tobe4home users. No installer side effects.
+# This is NOT Proxmox discovery, provisioning or a persistence layer.
+- name: tobe4home – unverbindlicher Erstüberblick
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Prüfen, dass nur die vorgesehenen Antworten übergeben wurden
+      ansible.builtin.assert:
+        that:
+          - home_goal in ['familie', 'smart_home', 'beides']
+          - experience in ['einsteiger', 'etwas_erfahrung', 'erfahren']
+          - proxmox_available in ['ja', 'weiss_nicht']
+          - existing_services in ['ja', 'nein', 'weiss_nicht']
+          - backup_available in ['ja', 'nein', 'weiss_nicht']
+          - access_scope in ['nur_zuhause', 'auch_unterwegs', 'weiss_nicht']
+        fail_msg: "Bitte die Ersteinrichtung mit den angebotenen Antworten ausfüllen."
+      changed_when: false
+
+    - name: Persönliche Übersicht erstellen – ohne Änderungen am Heimserver
+      ansible.builtin.debug:
+        msg:
+          status: "VORSCHAU – KEINE INSTALLATION AUSGEFÜHRT"
+          ihr_ziel: "{{ home_goal }}"
+          ihre_erfahrung: "{{ experience }}"
+          proxmox_vorhanden: "{{ proxmox_available }}"
+          bestehende_dienste: "{{ existing_services }}"
+          externe_datensicherung: "{{ backup_available }}"
+          gewünschter_zugriff: "{{ access_scope }}"
+          naechster_schritt: >-
+            Die geführte Ersteinrichtung mit echter Proxmox-Bestandsaufnahme,
+            nachvollziehbarem Plan und expliziter Installationsfreigabe ist
+            noch in Entwicklung. Keine Gäste oder Dienste wurden verändert.
+      changed_when: false
