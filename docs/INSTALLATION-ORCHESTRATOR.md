@@ -1,4 +1,13 @@
 # tobe4home – Promptgesteuerter Neuinstallations-Orchestrator
+> **Architekturhinweis (28.10.2026):** Die historischen Angaben
+> zu CT1000 und einem zweiten obligatorischen Controller in diesem
+> Konzept sind **überholt und dürfen nicht mehr implementiert werden**.
+> Seit [ADR-002](ADR-002-CONTROLLER-PROXMOX-PROVISIONING.md)
+> gibt es nur den unprivilegierten Proxmox-Controller **CT1001**;
+> nach [ADR-003](ADR-003-LLM-CHAT-FIRST-PLATFORM.md) bedient der
+> Anwender das Produkt primär über einen KI-Chat, mit AnsibleForms im
+> Hintergrund. Dieses Dokument ist historischer Planungsstand.
+>
 
 Status: **Zielarchitektur / Implementierungsvertrag, nicht bereits installiert.**
 Dieses Dokument beschreibt die Neuinstallation der Plattform. Ein Backup-/Recovery-
