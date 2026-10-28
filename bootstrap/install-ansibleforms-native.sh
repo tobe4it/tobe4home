@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Guest-only stage, executed inside an unprivileged Rocky Linux 10 CT1001.
-# Downloads the exact AnsibleForms installer release and verifies SHA-256.
+# Builds exact upstream v7.4.2 source, patching ONLY Node version selection.
 set -Eeuo pipefail
 umask 077
 [[ $EUID -eq 0 ]] || { echo "Requires root inside CT1001" >&2; exit 2; }
@@ -19,22 +19,16 @@ if [[ -e /etc/ansibleforms/installer.json ]]; then
   echo "Existing AnsibleForms installer state requires operator review" >&2
   exit 3
 fi
-WORK="$(mktemp -d /var/tmp/tb4h-anforms.XXXXXX)"
-trap 'rm -rf -- "$WORK"' EXIT
-cd "$WORK"
-BASE="https://github.com/ansibleforms/installer/releases/download/v7.4.2"
-BIN="ansibleforms-installer_linux_amd64"
-curl -fLsS --retry 3 --connect-timeout 20 -o "$BIN" "$BASE/$BIN"
-curl -fLsS --retry 3 --connect-timeout 20 -o checksums.txt "$BASE/checksums.txt"
-# Check only the selected architecture, not all binaries listed in checksums.txt.
-awk -v n="$BIN" '$2==n || $2=="*"n {print}' checksums.txt > selected.sha256
-[[ "$(wc -l < selected.sha256)" == 1 ]] ||
-  { echo "No unique SHA256 for pinned installer" >&2; exit 2; }
-sha256sum --check --status selected.sha256 ||
-  { echo "AnsibleForms installer SHA256 mismatch" >&2; exit 2; }
-install -m 0750 "$BIN" /usr/local/bin/ansibleforms-installer
+# Build from a verified immutable upstream source commit, rather than use
+# the official binary which chooses an unavailable Node 26 patch dynamically.
+# The sole source patch fixes Node v26.12.1 selection; the original upstream
+# SHA-256 manifest/download implementation is kept.
+# This is a tobe4home SOURCE-PATCHED installer, not an upstream release.
+bash /var/lib/tobe4home/build-native-installer.sh
+[[ -x /usr/local/bin/ansibleforms-installer ]] ||
+  { echo "Patched installer build did not produce executable" >&2; exit 2; }
 echo "Installing pinned AnsibleForms 7.4.2 with official native/systemd runtime."
-echo "Upstream installer handles MariaDB, Node.js, Python and independent Ansible RTE."
+echo "Source-patched from verified upstream v7.4.2 commit; Node v26.12.1 fixed, official SHA-256 preserved."
 # The upstream Go native installer uses os.MkdirAll(..., 0755) and unpacks
 # release/runtime files as root. With inherited umask 077 those directories
 # become 0700 and systemd's unprivileged ansibleforms user fails 200/CHDIR.
@@ -44,5 +38,6 @@ echo "Upstream installer handles MariaDB, Node.js, Python and independent Ansibl
 # No password on argv: upstream generates one and prints it on completion.
 # Does not use Docker/Podman and does not receive Proxmox API credentials.
 umask 022
+export TOBE4HOME_NODE_VERSION=v26.12.1
 exec /usr/local/bin/ansibleforms-installer install --yes \
   --version 7.4.2 --role controller --mode native --port 443 --lang de
