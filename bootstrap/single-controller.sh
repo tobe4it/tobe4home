@@ -45,6 +45,7 @@ for cmd in pct pvesh pvesm pveam python3 lxc-usernsexec; do
 done
 [[ -r "$ROOT/bootstrap/host_preflight.py" &&
    -r "$ROOT/bootstrap/networks.py" &&
+   -r "$ROOT/bootstrap/ct1001_remnant.py" &&
    -r "$ROOT/bootstrap/install-ansibleforms-native.sh" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
@@ -78,14 +79,14 @@ assert isinstance(xs,list)
 assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
 ' <<< "$RESOURCES" || die "VMID 1001 allocated"
   pct config "$VMID" >/dev/null 2>&1 && die "CT1001 already exists; use --resume"
-  # Proxmox guest removal can leave an *empty* /var/lib/lxc/1001 directory.
-  # The read-only preflight reports WARN in that case, and FAIL for nonempty
-  # directories/symlinks. Only an empty directory may be removed with rmdir
-  # after INSTALL 1001 approval, never rm -rf.
+  # Previous CT1001 can leave an empty runtime directory or the exact
+  # generated rules.seccomp + empty passthrough bundle. Preflight WARNs
+  # on those two known remnants only; unexpected contents still FAIL.
+  # Nothing is removed or moved before INSTALL 1001 approval.
   if [[ -e /var/lib/lxc/1001 || -L /var/lib/lxc/1001 ]]; then
     [[ -d /var/lib/lxc/1001 && ! -L /var/lib/lxc/1001 ]] ||
       die "Unexpected CT1001 runtime path type"
-    echo "NOTE: empty CT1001 runtime directory detected; will rmdir after approval."
+    echo "NOTE: approved CT1001 runtime remnant detected; will rmdir if empty,"\n    echo "or quarantine the exact Proxmox-generated artifacts after approval."
   fi
   TEMPLATE_FILE="$(pveam available --section system |
     awk '$1=="system" && $2 ~ /^rockylinux-10-default_[0-9]+_amd64\.tar\.(xz|gz|zst)$/ {print $2}' |
@@ -154,14 +155,19 @@ assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
     <<< "$ROOTDIR_VOLUMES"; then
     die "CT1001 rootfs volume appeared; no guest created"
   fi
-  # After INSTALL 1001 approval, only a completely empty directory may
-  # be removed. rmdir never unlinks files or removes nonempty directories.
+  # After explicit approval, remove only a truly empty directory using
+  # rmdir. For the exact nonempty PVE residue, ATOMICALLY MOVE (not
+  # delete) rules.seccomp + empty passthrough into a private quarantine.
+  # Every unexpected file, mountpoint, symlink or changed state blocks.
   if [[ -e /var/lib/lxc/1001 || -L /var/lib/lxc/1001 ]]; then
     [[ -d /var/lib/lxc/1001 && ! -L /var/lib/lxc/1001 ]] ||
       die "CT1001 leftover is not a normal directory"
-    rmdir -- /var/lib/lxc/1001 ||
-      die "CT1001 leftover not empty; inspect manually"
-    echo "REMOVED ONLY EMPTY RUNTIME DIRECTORY: /var/lib/lxc/1001"
+    if rmdir -- /var/lib/lxc/1001 2>/dev/null; then
+      echo "REMOVED ONLY EMPTY RUNTIME DIRECTORY: /var/lib/lxc/1001"
+    else
+      python3 "$ROOT/bootstrap/ct1001_remnant.py" --quarantine-approved-ct1001 ||
+        die "CT1001 runtime remnant is not eligible for safe quarantine"
+    fi
   fi
   (
     umask 022
