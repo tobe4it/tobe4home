@@ -36,7 +36,7 @@ def check_config(text: str) -> None:
     if not REQUIRED_TAGS.issubset(set(tags)):
         raise ValueError("CT1001 is missing tobe4home controller tags")
     rootfs = values.get("rootfs", "")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+:(?:subvol-1001-disk-[0-9]+|[A-Za-z0-9_.-]+),size=[0-9]+[GMK](?:,.*)?", rootfs):
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+:subvol-1001-disk-[0-9]+,size=[1-9][0-9]*[GMK](?:,[A-Za-z0-9_-]+=[A-Za-z0-9._-]+)*", rootfs):
         raise ValueError("CT1001 rootfs entry is absent or unexpected")
 
 
