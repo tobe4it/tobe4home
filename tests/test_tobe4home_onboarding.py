@@ -76,10 +76,10 @@ class BeginnerOnboardingTests(unittest.TestCase):
                 second = mod.deploy(stage, data, os.getuid() or 1001, os.getgid() or 1001)
                 self.assertEqual(set(second.values()), {"UNCHANGED"})
                 existing = data / "forms" / "tobe4home-start.yml"
-                existing.write_text("operator change")
+                existing.write_text("operator changed this form and should be preserved")
                 with self.assertRaisesRegex(ValueError, "refusing replacement"):
                     mod.deploy(stage, data, os.getuid() or 1001, os.getgid() or 1001)
-                self.assertEqual(existing.read_text(), "operator change")
+                self.assertEqual(existing.read_text(), "operator changed this form and should be preserved")
 
     def test_symlink_target_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
