@@ -65,6 +65,14 @@ def run_list(command: tuple[str, ...]) -> str:
         raise RuntimeError(f"Read-only {command[0]} inventory query failed")
     if len(p.stdout) > 250_000:
         raise ValueError("Excessive Proxmox inventory output")
+    if not p.stdout.strip():
+        # Proxmox `qm list` can return an empty stdout with exit 0 when
+        # the node has no QEMU guests. This is normal for LXC-only hosts.
+        # Accept it ONLY after the command has succeeded without stderr;
+        # preserve strict header validation for any nonempty output.
+        if command == ("qm", "list") and not p.stderr.strip():
+            return "VMID NAME STATUS\n"
+        raise ValueError(f"Empty output from {command[0]} inventory query")
     return p.stdout
 
 
