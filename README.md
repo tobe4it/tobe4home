@@ -155,6 +155,32 @@ administrator account, or certificates. Symlink targets are not followed.
 Persistent data, SSH keys, backups and TLS key material are outside the
 repair scope. Unknown code ownership or unexpected permissions fail closed.
 
+### Proxmox LXC tag normalization on resume
+
+The first real resume after the native-umask bug exposed another gate issue:
+the old shell check expected the text `tags: tobe4home;controller` in a
+fixed order. Proxmox may return `tags: controller;tobe4home`.
+The controller had already been created, and the old check returned
+`STOP: Not the tobe4home controller` **before making changes**.
+
+`bootstrap/check-controller-config.py` now validates **exact,
+semicolon-delimited tag membership in any order** and separately checks
+hostname `tb4h-controller`, `unprivileged: 1` and the expected CT1001
+rootfs. The new check is read-only and runs before the `RESUME 1001`
+confirmation. Nonmatching, duplicate or missing identity fields fail closed.
+The previous order-sensitive grep was removed.
+
+After updating the branch, retry the existing CT 1001:
+
+```bash
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo bash /root/tobe4home-bootstrap/bootstrap/launch.sh --resume
+```
+
+Only the already-created controller is targeted; **do not** run `--apply`
+again or remove the guest. A further failure must be analyzed without
+recreating the database or disclosing admin credentials.
+
 The process remains **staged**, not a fully released auto-provisioning
 platform: AnsibleForms login/real workflow validation, OpenTofu backend
 and apply approval, and subsequent independent guest deployments
