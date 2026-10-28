@@ -46,7 +46,8 @@ done
 [[ -r "$ROOT/bootstrap/host_preflight.py" &&
    -r "$ROOT/bootstrap/networks.py" &&
    -r "$ROOT/bootstrap/ct1001_remnant.py" &&
-   -r "$ROOT/bootstrap/install-ansibleforms-native.sh" ]] ||
+   -r "$ROOT/bootstrap/install-ansibleforms-native.sh" &&
+   -r "$ROOT/bootstrap/repair-ansibleforms-permissions.py" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
   echo "tobe4home – single Controller CT1001 (no CT1000)"
@@ -217,10 +218,43 @@ fi
 pct exec "$VMID" -- install -d -m 0700 /var/lib/tobe4home
 pct push "$VMID" "$ROOT/bootstrap/install-ansibleforms-native.sh" \
   /var/lib/tobe4home/install-ansibleforms-native.sh --perms 0700
-pct exec "$VMID" -- bash /var/lib/tobe4home/install-ansibleforms-native.sh ||
-  die "AnsibleForms installer failed; CT1001 kept for --resume"
-pct exec "$VMID" -- systemctl is-active ansibleforms ansibleforms-rte ||
-  die "AnsibleForms systemd check failed; CT1001 kept"
+pct push "$VMID" "$ROOT/bootstrap/repair-ansibleforms-permissions.py" \
+  /var/lib/tobe4home/repair-ansibleforms-permissions.py --perms 0700
+# A failed native installation can leave fully installed systemd units but
+# inaccessible code directories due to a prior umask=077. --resume must
+# recover those units, not rerun setup or replace the existing database,
+# admin credentials, certificates, or stored settings.
+if pct exec "$VMID" -- test -f /etc/systemd/system/ansibleforms.service &&
+   pct exec "$VMID" -- test -f /etc/systemd/system/ansibleforms-rte.service; then
+  echo "Existing native AnsibleForms services detected; repairing program access."
+  pct exec "$VMID" -- python3 /var/lib/tobe4home/repair-ansibleforms-permissions.py --apply ||
+    die "Native program permission validation refused; CT1001 preserved"
+  pct exec "$VMID" -- systemctl reset-failed ansibleforms ansibleforms-rte ||
+    die "Cannot reset failed AnsibleForms service states"
+  pct exec "$VMID" -- systemctl restart ansibleforms-rte ansibleforms ||
+    die "AnsibleForms service restart failed"
+else
+  pct exec "$VMID" -- bash /var/lib/tobe4home/install-ansibleforms-native.sh ||
+    die "AnsibleForms installer failed; CT1001 kept for --resume"
+  # Idempotent post-install invariant. This also catches regression if the
+  # upstream installer alters its defaults in a later pinned release.
+  pct exec "$VMID" -- python3 /var/lib/tobe4home/repair-ansibleforms-permissions.py --apply ||
+    die "Native program permission validation refused after install"
+fi
+pct exec "$VMID" -- systemctl is-active --quiet mariadb ansibleforms ansibleforms-rte ||
+  die "Native AnsibleForms services not all active; CT1001 kept"
+echo "Checking AnsibleForms HTTPS localhost health (self-signed test only)..."
+READY=0
+for attempt in 1 2 3 4 5 6 7 8; do
+  if pct exec "$VMID" -- curl -kfLsS --max-time 8 \
+      -o /dev/null https://127.0.0.1/ >/dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  [[ "$attempt" == 8 ]] || sleep 3
+done
+(( READY == 1 )) ||
+  die "AnsibleForms HTTPS localhost healthcheck failed; inspect journal and --resume"
 IP="$(pct exec "$VMID" -- ip -4 -o addr show dev eth0 |
   awk '{split($4,a,"/"); if(a[1]!=""){print a[1];exit}}')"
 echo "SINGLE-CONTROLLER CT1001 READY: https://$IP/"
