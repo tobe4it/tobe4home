@@ -86,7 +86,8 @@ assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
   if [[ -e /var/lib/lxc/1001 || -L /var/lib/lxc/1001 ]]; then
     [[ -d /var/lib/lxc/1001 && ! -L /var/lib/lxc/1001 ]] ||
       die "Unexpected CT1001 runtime path type"
-    echo "NOTE: approved CT1001 runtime remnant detected; will rmdir if empty,"\n    echo "or quarantine the exact Proxmox-generated artifacts after approval."
+    echo "NOTE: approved CT1001 runtime remnant detected; will rmdir if empty,"
+    echo "or quarantine the exact Proxmox-generated artifacts after approval."
   fi
   TEMPLATE_FILE="$(pveam available --section system |
     awk '$1=="system" && $2 ~ /^rockylinux-10-default_[0-9]+_amd64\.tar\.(xz|gz|zst)$/ {print $2}' |
