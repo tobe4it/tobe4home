@@ -85,6 +85,13 @@ die tobe4home-eigenen Dateien im bestehenden AnsibleForms
   erstellte, anonymisierte **Momentaufnahme** vorhandener LXC und VMs,
   getrennt nach Gesamtzahl und laufenden Gästen, ohne CT1001.
 
+Auf einem Proxmox-Host **ohne QEMU-VMs** kann `qm list` bei
+erfolgreichem Aufruf überhaupt keine Ausgabe liefern. Der Collector
+normalisiert nur diesen verifiziert erfolgreichen Fall zu **0 VMs**;
+fehlerhafte Abfragen, fehlende LXC-Ausgaben und unerwartete
+Inventarformate bleiben harte Fehler. Die RTE-Datei wird erst nach
+erfolgreicher Sammlung auf CT1001 veröffentlicht.
+
 Die Ermittlung erfolgt ausschließlich lesend auf dem Proxmox-Host über
 `pct list` und `qm list`. Gespeichert werden weder VMIDs noch Namen,
 Hostadressen oder Proxmox-API-Zugangsdaten. In CT1001 wird nur die
