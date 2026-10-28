@@ -49,7 +49,8 @@ done
    -r "$ROOT/bootstrap/install-ansibleforms-native.sh" &&
    -r "$ROOT/bootstrap/repair-ansibleforms-permissions.py" &&
    -r "$ROOT/bootstrap/check-controller-config.py" &&
-   -r "$ROOT/bootstrap/show-first-login.py" ]] ||
+   -r "$ROOT/bootstrap/show-first-login.py" &&
+   -r "$ROOT/bootstrap/check-node-runtime.py" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
   echo "tobe4home – single Controller CT1001 (no CT1000)"
@@ -73,6 +74,13 @@ PY
     die "Bridge not verified"
   python3 "$ROOT/bootstrap/host_preflight.py" --storage "$STORAGE" --vmid "$VMID" ||
     die "Rocky 10 host compatibility failed"
+  # The official native AnsibleForms installer selects the newest Node 26
+  # from nodejs.org/dist/index.json on each run. A newly indexed but not
+  # yet published version (v26.13.0 observed 2026-10-28) leaves a broken
+  # half-installed CT. Fail before VMID allocation, key selection or apply.
+  echo "Verifying official Node.js runtime assets before creating CT1001..."
+  python3 "$ROOT/bootstrap/check-node-runtime.py" --major 26 ||
+    die "Upstream Node.js release incomplete; no CT1001 created"
   RESOURCES="$(pvesh get /cluster/resources --type vm --output-format json)" ||
     die "Cluster-wide inventory not available"
   python3 -c '
@@ -228,6 +236,13 @@ pct push "$VMID" "$ROOT/bootstrap/repair-ansibleforms-permissions.py" \
 # credentials in shell arguments, Git, host files, or systemd journals.
 pct push "$VMID" "$ROOT/bootstrap/show-first-login.py" \
   /var/lib/tobe4home/show-first-login.py --perms 0700
+pct push "$VMID" "$ROOT/bootstrap/check-node-runtime.py" \
+  /var/lib/tobe4home/check-node-runtime.py --perms 0700
+# Re-check through the guest network immediately before invoking native
+# installer. A transient upstream index / mirror race must not be mistaken
+# for a Proxmox issue or bypassed with an unverified Node tarball.
+pct exec "$VMID" -- python3 /var/lib/tobe4home/check-node-runtime.py --major 26 ||
+  die "Guest cannot fetch matching official Node runtime assets; CT1001 kept"
 # A failed native installation can leave fully installed systemd units but
 # inaccessible code directories due to a prior umask=077. --resume must
 # recover those units, not rerun setup or replace the existing database,
