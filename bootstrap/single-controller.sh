@@ -50,7 +50,9 @@ done
    -r "$ROOT/bootstrap/repair-ansibleforms-permissions.py" &&
    -r "$ROOT/bootstrap/check-controller-config.py" &&
    -r "$ROOT/bootstrap/show-first-login.py" &&
-   -r "$ROOT/bootstrap/check-node-runtime.py" ]] ||
+   -r "$ROOT/bootstrap/check-node-runtime.py" &&
+   -r "$ROOT/bootstrap/build-native-installer.sh" &&
+   -r "$ROOT/bootstrap/patch-node-pin.py" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
   echo "tobe4home – single Controller CT1001 (no CT1000)"
@@ -74,13 +76,12 @@ PY
     die "Bridge not verified"
   python3 "$ROOT/bootstrap/host_preflight.py" --storage "$STORAGE" --vmid "$VMID" ||
     die "Rocky 10 host compatibility failed"
-  # The official native AnsibleForms installer selects the newest Node 26
-  # from nodejs.org/dist/index.json on each run. A newly indexed but not
-  # yet published version (v26.13.0 observed 2026-10-28) leaves a broken
-  # half-installed CT. Fail before VMID allocation, key selection or apply.
-  echo "Verifying official Node.js runtime assets before creating CT1001..."
-  python3 "$ROOT/bootstrap/check-node-runtime.py" --major 26 ||
-    die "Upstream Node.js release incomplete; no CT1001 created"
+  # A source-verified patch pins Node v26.12.1 rather than selecting the
+  # temporarily unavailable latest indexed v26.13.0. Fail before pct create
+  # unless the exact pinned checksum and archive are available.
+  echo "Verifying pinned official Node.js v26.12.1 assets before CT1001..."
+  python3 "$ROOT/bootstrap/check-node-runtime.py" --major 26 --pinned v26.12.1 ||
+    die "Pinned Node.js v26.12.1 assets unavailable; no CT1001 created"
   RESOURCES="$(pvesh get /cluster/resources --type vm --output-format json)" ||
     die "Cluster-wide inventory not available"
   python3 -c '
@@ -134,7 +135,7 @@ New unprivileged Rocky 10 CT1001, hostname tb4h-controller, onboot=0
 4 vCPU, RAM 4096 MiB, rootfs 40 GiB on $STORAGE
 Bridge $BRIDGE, DHCP, firewall enabled, DNS $DNS
 Template $TEMPLATE (cached: $CACHED)
-AnsibleForms 7.4.2, native MariaDB/systemd and separate RTE.
+AnsibleForms 7.4.2 (audited upstream source, Node v26.12.1 pinned), native MariaDB/systemd and separate RTE.
 Only this guest. No CT1000, no OpenTofu apply, no extra guests.
 PLAN
   if [[ "$MODE" == preview ]]; then
@@ -238,11 +239,15 @@ pct push "$VMID" "$ROOT/bootstrap/show-first-login.py" \
   /var/lib/tobe4home/show-first-login.py --perms 0700
 pct push "$VMID" "$ROOT/bootstrap/check-node-runtime.py" \
   /var/lib/tobe4home/check-node-runtime.py --perms 0700
+pct push "$VMID" "$ROOT/bootstrap/build-native-installer.sh" \
+  /var/lib/tobe4home/build-native-installer.sh --perms 0700
+pct push "$VMID" "$ROOT/bootstrap/patch-node-pin.py" \
+  /var/lib/tobe4home/patch-node-pin.py --perms 0700
 # Re-check through the guest network immediately before invoking native
 # installer. A transient upstream index / mirror race must not be mistaken
 # for a Proxmox issue or bypassed with an unverified Node tarball.
-pct exec "$VMID" -- python3 /var/lib/tobe4home/check-node-runtime.py --major 26 ||
-  die "Guest cannot fetch matching official Node runtime assets; CT1001 kept"
+pct exec "$VMID" -- python3 /var/lib/tobe4home/check-node-runtime.py --major 26 --pinned v26.12.1 ||
+  die "Guest cannot fetch pinned official Node v26.12.1 assets; CT1001 kept"
 # A failed native installation can leave fully installed systemd units but
 # inaccessible code directories due to a prior umask=077. --resume must
 # recover those units, not rerun setup or replace the existing database,
