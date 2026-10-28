@@ -87,8 +87,17 @@ rechecks cluster VMID, CT config and rootfs volumes, then uses **`rmdir`
 only** on that completely empty directory. It never recursively deletes
 LXC data.
 
-If the path is nonempty, a symlink, or unreadable, the bootstrap still
-fails closed. Inspect it without making changes:
+A special, previously verified Proxmox-generated remnant is now also
+supported: **exactly one regular `rules.seccomp` file (up to 4 KiB)
+plus a completely empty `passthrough` directory**, with no mountpoints.
+The preview displays WARN. Only after `INSTALL 1001`, the installer
+rechecks the Proxmox VMID and rootfs storage and atomically **moves**
+this entire remnant to the root-only
+`/var/lib/tobe4home/ct-runtime-quarantine/` directory. It never deletes
+the seccomp file; the quarantine is recoverable by an administrator.
+
+Other nonempty directories, symlinks, mountpoints or unreadable content
+**still FAIL CLOSED**. Inspect them without making changes:
 
 ```bash
 sudo ls -ld -- /var/lib/lxc/1001
