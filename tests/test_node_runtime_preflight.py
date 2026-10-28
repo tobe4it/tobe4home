@@ -67,7 +67,8 @@ class NodeArtifactPreflightTests(unittest.TestCase):
                         src.index('pct create "$VMID"'))
         self.assertLess(src.index('pct exec "$VMID" -- python3 /var/lib/tobe4home/check-node-runtime.py --major 26'),
                         src.index('pct exec "$VMID" -- bash /var/lib/tobe4home/install-ansibleforms-native.sh'))
-        self.assertIn('die "Upstream Node.js release incomplete; no CT1001 created"', src)
+        self.assertIn('--pinned v26.12.1', src)
+        self.assertIn('die "Pinned Node.js v26.12.1 assets unavailable; no CT1001 created"', src)
         self.assertEqual(subprocess.run(["bash", "-n", str(SINGLE)]).returncode, 0)
 
     def test_rejects_bad_index_and_untrusted_url(self):
@@ -78,6 +79,23 @@ class NodeArtifactPreflightTests(unittest.TestCase):
             node.verify_sums(SUMS, "node-v26.12.1-linux-x64.tar.gz")
         with self.assertRaises(ValueError):
             node.fetch_text("http://bad.test/dist/index.json", 300)
+
+    def test_exact_pin_ignores_unavailable_latest_node_release(self):
+        pinned_name = "node-v26.12.1-linux-x64.tar.gz"
+        pinned_sums = "b" * 64 + "  " + pinned_name + "\\n"
+        with patch.object(node, "fetch_text", return_value=pinned_sums) as fetch, \\
+             patch.object(node, "check_asset") as asset:
+            self.assertEqual(node.check(26, pinned="v26.12.1"), "v26.12.1")
+            fetch.assert_called_once_with(
+                "https://nodejs.org/dist/v26.12.1/SHASUMS256.txt", node.MAX_SUMS)
+            asset.assert_called_once_with(
+                "https://nodejs.org/dist/v26.12.1/" + pinned_name)
+
+    def test_other_pin_refused_even_if_official_index_lists_it(self):
+        with patch.object(node, "fetch_text") as fetch:
+            with self.assertRaisesRegex(ValueError, "Only reviewed"):
+                node.check(26, pinned="v26.13.0")
+            fetch.assert_not_called()
 
     def test_cli_without_network_refuses_other_major(self):
         p = subprocess.run(
