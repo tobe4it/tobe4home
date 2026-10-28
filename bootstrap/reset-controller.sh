@@ -48,7 +48,7 @@ inspect() {
   # Refuse any additional or host-backed mounts, data disks, backup locks,
   # snapshots, hooks or arbitrary low-level LXC directives. A new test CT
   # must match the single-rootfs topology created by this bootstrap.
-  if grep -Eq '^((mp|unused)[0-9]+|hookscript|lock|lxc[.]|template|parent|snapstate):|^\[' <<<"$cfg"; then
+  if grep -Eq '^((mp|unused)[0-9]+|hookscript|lock|lxc[.][^:]*|template|parent|snapstate):|^\[' <<<"$cfg"; then
     die "Additional disk, mount, snapshot, lock or hook detected; manual review needed"
   fi
   if grep -Eq '^rootfs: .*[,](acl|mountoptions|quota|replicate)=' <<<"$cfg"; then
