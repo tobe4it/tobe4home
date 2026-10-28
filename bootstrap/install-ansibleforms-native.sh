@@ -35,7 +35,14 @@ sha256sum --check --status selected.sha256 ||
 install -m 0750 "$BIN" /usr/local/bin/ansibleforms-installer
 echo "Installing pinned AnsibleForms 7.4.2 with official native/systemd runtime."
 echo "Upstream installer handles MariaDB, Node.js, Python and independent Ansible RTE."
+# The upstream Go native installer uses os.MkdirAll(..., 0755) and unpacks
+# release/runtime files as root. With inherited umask 077 those directories
+# become 0700 and systemd's unprivileged ansibleforms user fails 200/CHDIR.
+# Use standard umask 022 ONLY for the reviewed upstream install process:
+# upstream explicitly writes its app.env/rte.env with 0640 and credentials
+# with restricted modes; do not chmod any secrets or data directory here.
 # No password on argv: upstream generates one and prints it on completion.
 # Does not use Docker/Podman and does not receive Proxmox API credentials.
+umask 022
 exec /usr/local/bin/ansibleforms-installer install --yes \
   --version 7.4.2 --role controller --mode native --port 443 --lang de
