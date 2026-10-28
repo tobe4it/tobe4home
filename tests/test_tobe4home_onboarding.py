@@ -62,12 +62,19 @@ class BeginnerOnboardingTests(unittest.TestCase):
         self.assertEqual(play["connection"], "local")
         for task in play["tasks"]:
             self.assertNotIn("become", task)
-            self.assertTrue(set(task.keys()) & {"ansible.builtin.assert", "ansible.builtin.debug"})
+            self.assertTrue(set(task.keys()) & {
+                "ansible.builtin.assert", "ansible.builtin.debug",
+                "ansible.builtin.stat", "ansible.builtin.set_fact",
+            })
             self.assertFalse(task.get("changed_when", True))
         self.assertNotIn("proxmox_available", PLAYBOOK.read_text().lower())
         self.assertNotIn("existing_services", PLAYBOOK.read_text().lower())
         self.assertIn("tb4h-proxmox-snapshot.json", PLAYBOOK.read_text())
-        self.assertIn("proxmox_basis", play["tasks"][1]["ansible.builtin.debug"]["msg"])
+        overview_task = next(task for task in play["tasks"] if "ansible.builtin.debug" in task)
+        self.assertIn("proxmox_basis", overview_task["ansible.builtin.debug"]["msg"])
+        self.assertIn("playbook_dir", play["vars"]["tb4h_inventory_path"])
+        self.assertNotIn("/opt/ansibleforms/data/playbooks/", PLAYBOOK.read_text())
+        self.assertIn("RTE", play["tasks"][2]["ansible.builtin.assert"]["fail_msg"])
         for forbidden in ("pct create", "community.general", "command:", "shell:",
                           "ansible.builtin.copy:", "ansible.builtin.file:", "tofu apply"):
             self.assertNotIn(forbidden, PLAYBOOK.read_text().lower())
