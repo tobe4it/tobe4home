@@ -52,7 +52,10 @@ done
    -r "$ROOT/bootstrap/show-first-login.py" &&
    -r "$ROOT/bootstrap/check-node-runtime.py" &&
    -r "$ROOT/bootstrap/build-native-installer.sh" &&
-   -r "$ROOT/bootstrap/patch-node-pin.py" ]] ||
+   -r "$ROOT/bootstrap/patch-node-pin.py" &&
+   -r "$ROOT/bootstrap/install-tobe4home-onboarding.py" &&
+   -r "$ROOT/ansibleforms/forms/tobe4home-start.yml" &&
+   -r "$ROOT/ansibleforms/playbooks/tb4h-onboarding-preview.yml" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
   echo "tobe4home – single Controller CT1001 (no CT1000)"
@@ -243,6 +246,14 @@ pct push "$VMID" "$ROOT/bootstrap/build-native-installer.sh" \
   /var/lib/tobe4home/build-native-installer.sh --perms 0700
 pct push "$VMID" "$ROOT/bootstrap/patch-node-pin.py" \
   /var/lib/tobe4home/patch-node-pin.py --perms 0700
+# The first-run interface is a tobe4home wizard, not AnsibleForms demos.
+# Stage these separately, install only reviewed tobe4home-owned filenames.
+pct push "$VMID" "$ROOT/bootstrap/install-tobe4home-onboarding.py" \
+  /var/lib/tobe4home/install-tobe4home-onboarding.py --perms 0700
+pct push "$VMID" "$ROOT/ansibleforms/forms/tobe4home-start.yml" \
+  /var/lib/tobe4home/tobe4home-start.yml --perms 0600
+pct push "$VMID" "$ROOT/ansibleforms/playbooks/tb4h-onboarding-preview.yml" \
+  /var/lib/tobe4home/tb4h-onboarding-preview.yml --perms 0600
 # Re-check through the guest network immediately before invoking native
 # installer. A transient upstream index / mirror race must not be mistaken
 # for a Proxmox issue or bypassed with an unverified Node tarball.
@@ -269,6 +280,12 @@ else
   pct exec "$VMID" -- python3 /var/lib/tobe4home/repair-ansibleforms-permissions.py --apply ||
     die "Native program permission validation refused after install"
 fi
+# Publish the beginner-facing tobe4home first-run wizard on every completed
+# bootstrap and verified --resume. Do not remove upstream example forms or
+# replace existing locally modified files. This stage cannot provision LXCs.
+echo "Installing tobe4home beginner onboarding (preview-only)..."
+pct exec "$VMID" -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
+  die "Cannot safely publish tobe4home setup form; CT1001 preserved"
 pct exec "$VMID" -- systemctl is-active --quiet mariadb ansibleforms ansibleforms-rte ||
   die "Native AnsibleForms services not all active; CT1001 kept"
 echo "Checking AnsibleForms HTTPS localhost health (self-signed test only)..."
