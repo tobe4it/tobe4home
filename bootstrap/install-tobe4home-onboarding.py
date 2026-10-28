@@ -37,7 +37,7 @@ PREVIOUS_GIT_BLOBS = {
 
 
 def approved_previous_blob(name: str, data: bytes) -> bool:
-    head = b"blob " + str(len(data)).encode("ascii") + b"\\x00"
+    head = b"blob " + str(len(data)).encode("ascii") + b"\x00"
     digest = hashlib.sha1(head + data, usedforsecurity=False).hexdigest()
     return digest in PREVIOUS_GIT_BLOBS.get(name, frozenset())
 
