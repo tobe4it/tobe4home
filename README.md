@@ -95,6 +95,25 @@ Die Sammlung läuft nach ausdrücklicher `INSTALL 1001`- bzw.
 mit einem eindeutigen Fehler beendet; fehlende Daten werden nicht als
 „keine vorhandenen Dienste“ interpretiert.
 
+**AnsibleForms RTE 7 – behobener Pfadfehler:** Das Playbook wird bei
+`RTE_FILES=transfer` unter einem temporären Arbeitsverzeichnis gestartet.
+Ein fest verdrahteter Pfad nach `/opt/ansibleforms/data/playbooks/`
+funktioniert dort nicht. Die Bestandsaufnahme wird nun mittels
+`playbook_dir` aus dem tatsächlich übertragenen Playbookverzeichnis
+gelesen. Das Bootstrap-/Retrofit-Skript validiert und veröffentlicht
+die Snapshot-Datei **vor** dem neuen Playbook. Ist der Snapshot dennoch
+nicht vorhanden, erfolgt ein eindeutiger Fehler mit Wiederanlaufhinweis,
+ohne einen zweiten Proxmox-Gast zu verändern.
+
+**Provisionierung weiterer Gäste:** CT1001 ist langfristig die Instanz,
+die nach Freigabe neue LXC/VMs auf Proxmox provisioniert und mit Ansible
+konfiguriert. Der aktuelle Host-seitige Snapshot berechtigt den RTE
+ausdrücklich **nicht** dazu. Der Sicherheits- und Freigabevertrag steht
+in [ADR-002](docs/ADR-002-CONTROLLER-PROXMOX-PROVISIONING.md) und
+[Issue #3](https://github.com/tobe4it/tobe4home/issues/3). Eine
+eingeschränkte Proxmox-API-Anbindung und OpenTofu-Plan-/Apply-Prozesse
+sind noch nicht implementiert.
+
 Der neue direkte Einstieg ist `https://<controller-ip>/form/tobe4home-start`;
 der Bootstrap zeigt ihn neben der Hauptadresse und dem Initialpasswort
 **am Ende** an. Anmeldung ist weiterhin erforderlich. Die
