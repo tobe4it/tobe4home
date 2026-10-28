@@ -27,7 +27,7 @@ class SingleControllerLauncherTests(unittest.TestCase):
         self.assertNotIn("CT1000 is created", result.stdout)
 
     def test_shell_syntax_of_new_install_path(self):
-        for path in (LAUNCH, SINGLE, NATIVE):
+        for path in (LAUNCH, SINGLE, NATIVE, ROOT / "bootstrap/build-native-installer.sh"):
             with self.subTest(path=path):
                 proc = subprocess.run(["bash", "-n", str(path)],
                                       capture_output=True, text=True)
@@ -66,7 +66,13 @@ class SingleControllerLauncherTests(unittest.TestCase):
         src = NATIVE.read_text()
         self.assertIn("v7.4.2", src)
         self.assertIn("--version 7.4.2", src)
-        self.assertIn("sha256sum --check", src)
+        self.assertIn('build-native-installer.sh', src)
+        build=(ROOT / "bootstrap/build-native-installer.sh").read_text()
+        self.assertIn("ae60b31742ee5bd6956f9bf9798fd5b5356ccf42", build)
+        self.assertIn("GOTOOLCHAIN=go1.27.2", build)
+        self.assertIn('python3 "$PATCH" "$SRC/internal/native/native.go"', build)
+        self.assertIn("TOBE4HOME_NODE_VERSION=v26.12.1", src)
+        self.assertNotIn("curl -fLsS --retry", src)
         self.assertNotIn("curl | sh", src)
         self.assertIn("--mode native", src)
         self.assertNotIn("--runtime docker", src)
