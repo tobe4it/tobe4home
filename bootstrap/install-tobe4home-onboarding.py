@@ -105,6 +105,17 @@ def deploy(stage: Path = STAGE, data: Path = DATA, owner_uid: int | None = None,
         # Only trust the AnsibleForms user or root to own a direct asset folder.
         if folder.lstat().st_uid not in (0, owner_uid):
             raise ValueError(f"Unexpected destination directory owner: {parent}")
+    # Check every existing target before writing ANY asset, so a partial
+    # deployment cannot occur if the operator modified one of the files.
+    for name, (dst, folder) in ASSETS.items():
+        source_bytes = stage_bytes(stage / name)
+        target = data / folder / dst
+        if target.exists() or target.is_symlink():
+            existing = target.lstat()
+            if not stat.S_ISREG(existing.st_mode) or existing.st_nlink != 1:
+                raise ValueError(f"Unexpected target file type: {dst}")
+            if stage_bytes(target) != source_bytes:
+                raise ValueError(f"Existing locally modified form/playbook; refusing replacement: {dst}")
     results = {}
     for name, (dst, folder) in ASSETS.items():
         results[name] = install_asset(stage / name, data / folder / dst, owner_uid, owner_gid)
