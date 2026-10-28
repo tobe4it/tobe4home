@@ -73,6 +73,9 @@ class ProxmoxDiscoveryTests(unittest.TestCase):
         self.assertNotIn("Laufen auf dem Server", form)
         self.assertEqual(form.count("    - subform:"), 2)
         self.assertIn("tb4h-proxmox-snapshot.json", play)
+        self.assertIn("{{ playbook_dir }}/tb4h-proxmox-snapshot.json", play)
+        self.assertNotIn("/opt/ansibleforms/data/playbooks/tb4h-proxmox-snapshot.json", play)
+        self.assertIn("Die Proxmox-Bestandsaufnahme fehlt", play)
         self.assertNotIn("pvesh", play)
         self.assertNotIn("community.general.proxmox", play)
         self.assertNotIn("become:", play)
@@ -119,6 +122,9 @@ class ProxmoxDiscoveryTests(unittest.TestCase):
             self.assertIn('python3 "$ROOT/bootstrap/collect-proxmox-inventory.py"', text)
             self.assertIn('install-proxmox-snapshot.py', text)
             self.assertIn('tb4h-proxmox-snapshot.json', text)
+            self.assertLess(text.index('install-proxmox-snapshot.py ||'),
+                            text.index('install-tobe4home-onboarding.py ||'),
+                            "The preview must not be deployed before its data")
             self.assertNotIn("pct destroy", text)
             self.assertNotIn("pvesh set", text)
             r = subprocess.run(["bash", "-n", str(file)], capture_output=True, text=True)
