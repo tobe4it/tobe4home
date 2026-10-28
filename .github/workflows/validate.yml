@@ -30,6 +30,8 @@ jobs:
         run: |
           bash -n bootstrap/bootstrap.sh
           bash -n bootstrap/launch.sh
+          bash -n bootstrap/single-controller.sh
+          bash -n bootstrap/install-ansibleforms-native.sh
           bash -n bootstrap/installer-tui.sh
 
       - name: Python regression tests
