@@ -71,8 +71,29 @@ def classify_runtime_dir(path: Path) -> tuple[str, str]:
         return "FAIL", "Unexpected non-directory or symbolic link; inspect manually"
     try:
         with os.scandir(path) as entries:
-            if next(entries, None) is not None:
-                return "FAIL", "Nonempty LXC runtime directory; inspect contents, never remove recursively"
+            first = next(entries, None)
+            if first is not None:
+                # Display only top-level entry names and types. Do not follow
+                # symlinks, traverse rootfs, or inspect private file contents.
+                found = [first]
+                for entry in entries:
+                    if len(found) >= 12:
+                        break
+                    found.append(entry)
+                summary = []
+                for entry in found:
+                    try:
+                        kind = "symlink" if entry.is_symlink() else (
+                            "directory" if entry.is_dir(follow_symlinks=False)
+                            else "file" if entry.is_file(follow_symlinks=False)
+                            else "other")
+                    except OSError:
+                        kind = "unknown"
+                    summary.append(f"{entry.name[:72]!r} ({kind})")
+                return ("FAIL",
+                        "Nonempty LXC runtime directory; first-level entries: " +
+                        ", ".join(summary) +
+                        ". Investigate; never remove recursively")
     except OSError as exc:
         return "FAIL", f"Cannot inspect LXC runtime contents: {exc.strerror}"
     return "WARN", "Empty LXC runtime directory; safe to rmdir only after guest creation approval"
