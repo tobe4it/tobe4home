@@ -90,7 +90,15 @@ assert isinstance(xs,list)
 assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
 ' <<< "$RESOURCES" || die "VMID 1001 allocated"
   pct config "$VMID" >/dev/null 2>&1 && die "CT1001 already exists; use --resume"
-  [[ ! -e /var/lib/lxc/1001 ]] || die "Stale CT1001 path"
+  # Proxmox pct destroy can leave an *empty* /var/lib/lxc/1001 directory.
+  # The read-only preflight reports WARN in that case, and FAIL for nonempty
+  # directories/symlinks. Only an empty directory may be removed with rmdir
+  # after INSTALL 1001 approval, never rm -rf.
+  if [[ -e /var/lib/lxc/1001 || -L /var/lib/lxc/1001 ]]; then
+    [[ -d /var/lib/lxc/1001 && ! -L /var/lib/lxc/1001 ]] ||
+      die "Unexpected CT1001 runtime path type"
+    echo "NOTE: empty CT1001 runtime directory detected; will rmdir after approval."
+  fi
   TEMPLATE_FILE="$(pveam available --section system |
     awk '$1=="system" && $2 ~ /^rockylinux-10-default_[0-9]+_amd64\.tar\.(xz|gz|zst)$/ {print $2}' |
     LC_ALL=C sort | tail -n 1)"
@@ -134,6 +142,23 @@ assert isinstance(xs,list)
 assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
 ' <<< "$RESOURCES" || die "CT1001 became occupied"
   python3 "$ROOT/bootstrap/networks.py" --validate "$BRIDGE" || die "Bridge changed"
+  # At this point explicit creation approval was supplied. Remove only
+  # a provably empty leftover directory; rmdir refuses all nonempty trees.
+  # Recheck the VMID/config before this one bounded cleanup action.
+  pct config "$VMID" >/dev/null 2>&1 &&
+    die "CT1001 appeared during install"
+  if [[ -e /var/lib/lxc/1001 || -L /var/lib/lxc/1001 ]]; then
+    [[ -d /var/lib/lxc/1001 && ! -L /var/lib/lxc/1001 ]] ||
+      die "CT1001 leftover is not a normal directory"
+    rmdir -- /var/lib/lxc/1001 ||
+      die "CT1001 leftover not empty; inspect manually"
+    echo "REMOVED ONLY EMPTY RUNTIME DIRECTORY: /var/lib/lxc/1001"
+  fi
+  # Storage recheck (a preflight snapshot is not a write-time guarantee).
+  if pvesm list "$STORAGE" --content rootdir |
+    awk 'NR>1 && $1 ~ /:subvol-1001-disk-/ {found=1} END {exit !found}'; then
+    die "CT1001 rootfs volume appeared; no guest created"
+  fi
   (
     umask 022
     pct create "$VMID" "$TEMPLATE" --hostname tb4h-controller \
