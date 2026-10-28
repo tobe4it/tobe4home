@@ -1,4 +1,13 @@
 # ADR 002 – AnsibleForms 7 as tobe4home controller user interface
+> **Produktpräzisierung (28.10.2026):** Die ursprünglich als primäre
+> Bedienoberfläche vorgesehene AnsibleForms-Formularsammlung ist seit
+> [ADR-003](ADR-003-LLM-CHAT-FIRST-PLATFORM.md) nur noch Workflow-/
+> Ansible-Ausführungsschicht. Die primäre tobe4home-Oberfläche ist
+> ein natürlicher LLM-Chat, der nach Prüfung und Freigabe Ansible-
+> Artefakte generiert und bereitstellt. Die nativen AnsibleForms-
+> Fähigkeiten bleiben wiederverwendet; dieser ältere UI-Entscheid
+> ist insoweit überholt. Der Chat ist noch nicht implementiert.
+>
 
 Status: **accepted architectural choice, implementation pending** (27 October 2026).
 Supersedes proposals to build a complete proprietary wizard UI or to make
