@@ -63,7 +63,7 @@ class ProxmoxDiscoveryTests(unittest.TestCase):
                           return_value=SimpleNamespace(
                               returncode=0, stdout="", stderr="")) as run:
             canonical = collector.run_list(("qm", "list"))
-            self.assertEqual(canonical, "VMID NAME STATUS\\n")
+            self.assertEqual(canonical, "VMID NAME STATUS\n")
             self.assertEqual(collector.overview(PCT, canonical)["qemu"],
                              {"total": 0, "running": 0})
             run.assert_called_once()
