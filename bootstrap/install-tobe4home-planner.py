@@ -93,7 +93,9 @@ def install(stage: Path = STAGE, data: Path = DATA, uid: int | None = None,
                 os.fsync(writer.fileno())
             if target.exists() or target.is_symlink():
                 raise ValueError("Destination appeared while installing: " + target.name)
-            os.replace(temp, target)
+            # Exclusive hardlink creation refuses any target that appears
+            # between preflight and commit (os.replace would overwrite it).
+            os.link(temp, target, follow_symlinks=False)
             results[target.name] = "CREATED"
         finally:
             if fd >= 0:
