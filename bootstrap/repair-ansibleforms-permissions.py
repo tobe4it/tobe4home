@@ -71,6 +71,18 @@ def mode_for_code(st: os.stat_result) -> int:
     return mode | stat.S_IRGRP | (stat.S_IXGRP if mode & stat.S_IXUSR else 0)
 
 
+def code_usable_by_user(st: os.stat_result, gid: int) -> bool:
+    """No chmod/chgrp when upstream 0755/0644 already grants safe access."""
+    mode = stat.S_IMODE(st.st_mode)
+    needed = (stat.S_IRUSR | stat.S_IXUSR
+              if stat.S_ISDIR(st.st_mode)
+              else stat.S_IRUSR | (stat.S_IXUSR if mode & stat.S_IXUSR else 0))
+    group_req = (needed >> 3)
+    other_req = (needed >> 6)
+    return ((mode & other_req) == other_req or
+            (st.st_gid == gid and (mode & group_req) == group_req))
+
+
 def plan(base: Path, user: str, expected_uid: int = 0,
          gid: int | None = None) -> list[tuple[Path, int, int]]:
     """Return path + target group + target mode, without changing files."""
@@ -97,14 +109,16 @@ def plan(base: Path, user: str, expected_uid: int = 0,
     for path in [base] + [base / "releases", base / "runtime"]:
         st = kind(path)
         target = mode_for_code(st)
-        if st.st_gid != gid or stat.S_IMODE(st.st_mode) != target:
+        if not code_usable_by_user(st, gid):
             changes.append((path, gid, target))
     # Runtime is shared (Node.js, uv, Python); release holds only trusted code.
     # Do NOT traverse base/data, home, installer-backups, or env files.
     for root in [release, base / "runtime"]:
         for path, st in guarded_tree(root, expected_uid):
             target = mode_for_code(st)
-            if st.st_gid != gid or stat.S_IMODE(st.st_mode) != target:
+            if not code_usable_by_user(st, gid):
+                if stat.S_ISREG(st.st_mode) and st.st_nlink > 1:
+                    raise ValueError(f"Hard-linked inaccessible code file: {path}")
                 changes.append((path, gid, target))
     # Upstream writeEnv writes 0640 but old umask 077 made 0600.
     # Verify the exact expected root:ansibleforms ownership first.
