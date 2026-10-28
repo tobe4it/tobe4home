@@ -17,6 +17,40 @@ guests. The controller is never itself used as a destructive test target.
 No CT1000 stage, no privileged controller, no direct Proxmox root credentials
 inside AnsibleForms.
 
+## Resource policy: LXC first, VM only when justified
+
+**Default: no QEMU/KVM VMs are required to bootstrap or operate the initial
+tobe4home platform.** The Proxmox-hosted controller and the planned
+Linux-based family/automation services use separate unprivileged LXC system
+containers when the required workload has been validated there. Prefer a
+long-supported, RHEL-compatible OS image and native systemd services; use
+rootless Podman in an unprivileged LXC only after validating user namespaces,
+cgroups, storage and security constraints. Never weaken the Proxmox host or
+make an LXC privileged merely to force compatibility.
+
+A running LXC shares the PVE host kernel: a `cores` setting limits CPU
+availability rather than reserving physical cores; `memory` is a cgroup
+limit, not a permanently reserved amount of physical RAM. An idle guest
+still uses some process memory; ZFS/cache usage also remains relevant.
+An idle **VM** likewise consumes little CPU, but adds a guest kernel and
+virtual hardware overhead; memory ballooning can reduce but not remove the
+differences. No guest should be characterized as consuming literally zero
+resources while running.
+
+Choose **a VM by explicit exception** only when a concrete component needs
+another kernel/OS (e.g. a prebuilt appliance), incompatible kernel modules,
+nested virtualization, a compatibility combination not safely supportable
+in unprivileged LXC, or a stronger isolation boundary for untrusted workloads.
+Document the requirement, measured resource impact, alternative options,
+backup and update lifecycle. A generic preference for VMs is not enough.
+
+Planning must default to `kind=lxc`; a VM request is an intentional
+operator-visible choice with an explanation. Discovery may read QEMU guest
+inventories to avoid ID collisions even when tobe4home creates no VMs.
+The first provisioning acceptance requires **one disposable unprivileged
+LXC only**. A VM provisioning test is **conditional** on implementing the
+optional VM capability, not a blocker for the standard LXC-only product.
+
 ## Current verified boundary
 
 - The **bootstrap itself** is a Proxmox-host-side, root-approved installer.
@@ -82,8 +116,11 @@ inside AnsibleForms.
       actual PVE reads, no hard-coded assumptions.
 - [ ] OpenTofu plan signed/hashed, reviewed and explicitly approved;
       must reject destroy/replace/changes outside tobe4home scope.
-- [ ] Create one disposable test LXC and one VM, configure via Ansible,
+- [ ] Create one disposable unprivileged test LXC, configure via Ansible,
       verify network, restart, access, backups and rollback.
+- [ ] **Optional VM capability only if a concrete service requires it:** separately
+      validate VM planning, permissions, resources, creation and backup. No
+      QEMU/KVM VM may be created just to satisfy the normal deployment test.
 - [ ] No mutation before approval or after snapshot/plan drift; test with
       unauthorised user, wrong token, existing VMID and unavailable storage.
 - [ ] Full end-to-end test from new PVE install -> CT1001 -> GUI -> plan ->
