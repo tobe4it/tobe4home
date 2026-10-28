@@ -61,6 +61,40 @@ state/approval/executor gateway, CI and guest configuration workflows
 still require actual integration and acceptance. No additional guests
 are created by this bootstrap.
 
+### Node.js release publication gate (28 October 2026)
+
+On the second clean Rocky Linux 10 controller bootstrap, the upstream
+AnsibleForms 7.4.2 native installer selected **Node.js v26.13.0**
+from the current Node.js release index but could not retrieve
+`https://nodejs.org/dist/v26.13.0/SHASUMS256.txt`. It aborted with
+`STOP: AnsibleForms installer failed; CT1001 kept for --resume`.
+This is not a Proxmox, Rocky DNF or ZFS error. The immediately previous
+run had selected v26.12.1; the upstream installer selects the highest
+Node.js 26 release **at runtime** rather than a fixed patch version.
+
+**The new fail-closed gate prevents another half-created guest.** Before
+the SSH key prompt or creating CT1001, the host uses
+`bootstrap/check-node-runtime.py` to check the same highest published
+Node 26 version and require the official SHA-256 manifest and matching
+Linux x64 archive. The same check is repeated inside the guest immediately
+before running AnsibleForms. Missing assets or mismatched checksums
+**fail before** attempting the native install; the upstream installer
+continues to verify SHA-256 when it actually downloads the runtime.
+
+Never silently replace the upstream-selected release with an older
+runtime under a misleading version directory or disable the upstream
+checksums. A currently incomplete upstream release will still block
+the new bootstrap; it can proceed only when the official artifacts
+are consistently published. The gate protects the PVE host and keeps
+the failure diagnostic and reproducible, but does **not** itself make
+Node.js 26.13.0 available.
+
+For a deliberately disposable CT1001 from the failed attempt, run the
+guarded `bootstrap/reset-controller.sh` preview and confirmed destroy,
+then run the clean installer with the reviewed network/storage options.
+The first-login URL + generated password must appear as the **last**
+output, only after successful local HTTPS and systemd health checks.
+
 ### First login credentials at the very end of bootstrap
 
 A completed controller bootstrap must not leave the user searching through
