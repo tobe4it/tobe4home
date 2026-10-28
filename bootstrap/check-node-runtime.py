@@ -80,8 +80,18 @@ def verify_sums(sums: str, filename: str) -> None:
         raise ValueError(f"Official SHASUMS256.txt does not list exactly one {filename}")
 
 
-def check(major: int = MAJOR) -> str:
-    version = chosen_node_release(fetch_text(BASE + "index.json", MAX_INDEX), major)
+PIN = "v26.12.1"
+
+
+def check(major: int = MAJOR, pinned: str | None = None) -> str:
+    if pinned is None:
+        # Backward-compatible diagnostic of the original upstream dynamic
+        # selection; never used for the tobe4home pinned install.
+        version = chosen_node_release(fetch_text(BASE + "index.json", MAX_INDEX), major)
+    else:
+        if pinned != PIN or major != MAJOR:
+            raise ValueError("Only reviewed Node v26.12.1 is supported")
+        version = PIN
     base = f"{BASE}{version}/"
     filename = f"node-{version}-linux-x64.tar.gz"
     # The upstream downloads this exact checksum and archive.
@@ -94,18 +104,19 @@ def check(major: int = MAJOR) -> str:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--major", type=int, default=MAJOR)
+    p.add_argument("--pinned", default=PIN)
     args = p.parse_args()
-    if args.major != MAJOR:
-        print("NODE_PREFLIGHT_REFUSED: only audited Node.js major 26", file=sys.stderr)
+    if args.major != MAJOR or args.pinned != PIN:
+        print("NODE_PREFLIGHT_REFUSED: only audited Node.js v26.12.1", file=sys.stderr)
         return 2
     try:
-        version = check(args.major)
+        version = check(args.major, pinned=args.pinned)
     except (HTTPError, URLError, TimeoutError, OSError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
         # Avoid printing potentially attacker-controlled URL response bodies.
-        print(f"NODE_RUNTIME_NOT_READY: official Node.js {MAJOR} index/checksum/archive mismatch ({type(exc).__name__})", file=sys.stderr)
+        print(f"NODE_RUNTIME_NOT_READY: pinned official Node.js {PIN} checksum/archive not ready ({type(exc).__name__})", file=sys.stderr)
         print("Refusing this bootstrap before native AnsibleForms starts. Retry only after official release is complete.", file=sys.stderr)
         return 2
-    print(f"NODE_RUNTIME_READY={version} (official index, SHASUMS256 and Linux x64 archive verified reachable)")
+    print(f"NODE_RUNTIME_READY={version} (pinned; official SHASUMS256 and Linux x64 archive reachable)")
     return 0
 
 
