@@ -1,6 +1,7 @@
 ---
 # Read-only onboarding for novice tobe4home users. No installer side effects.
-# This is NOT Proxmox discovery, provisioning or a persistence layer.
+# Uses only a snapshot collected read-only ON THE PVE HOST; no guest PVE access.
+# This is NOT live service scanning, provisioning or a persistence layer.
 - name: tobe4home – unverbindlicher Erstüberblick
   hosts: localhost
   connection: local
@@ -11,7 +12,6 @@
         that:
           - home_goal in ['familie', 'smart_home', 'beides']
           - experience in ['einsteiger', 'etwas_erfahrung', 'erfahren']
-          - existing_services in ['ja', 'nein', 'weiss_nicht']
           - backup_available in ['ja', 'nein', 'weiss_nicht']
           - access_scope in ['nur_zuhause', 'auch_unterwegs', 'weiss_nicht']
         fail_msg: "Bitte die Ersteinrichtung mit den angebotenen Antworten ausfüllen."
@@ -23,12 +23,16 @@
           status: "VORSCHAU – KEINE INSTALLATION AUSGEFÜHRT"
           ihr_ziel: "{{ home_goal }}"
           ihre_erfahrung: "{{ experience }}"
-          proxmox_basis: "Voraussetzung dieses Bootstrap-Verfahrens; weitere automatische Bestandsaufnahme folgt später"
-          bestehende_dienste: "{{ existing_services }}"
+          proxmox_basis: "Bootstrap auf einem geprüften Proxmox-Host"
+          bestand_lxc: "{{ (lookup('ansible.builtin.file', '/opt/ansibleforms/data/playbooks/tb4h-proxmox-snapshot.json') | from_json).lxc }}"
+          bestand_vm: "{{ (lookup('ansible.builtin.file', '/opt/ansibleforms/data/playbooks/tb4h-proxmox-snapshot.json') | from_json).qemu }}"
+          bestandsaufnahme_zeitpunkt: "{{ (lookup('ansible.builtin.file', '/opt/ansibleforms/data/playbooks/tb4h-proxmox-snapshot.json') | from_json).collected_at_utc }}"
+          erkennungsumfang: "LXC und VMs, ohne CT1001; Anwendungen innerhalb der Gäste noch nicht geprüft"
           externe_datensicherung: "{{ backup_available }}"
           gewünschter_zugriff: "{{ access_scope }}"
           naechster_schritt: >-
-            Die geführte Ersteinrichtung mit echter Proxmox-Bestandsaufnahme,
-            nachvollziehbarem Plan und expliziter Installationsfreigabe ist
-            noch in Entwicklung. Keine Gäste oder Dienste wurden verändert.
+            Dies ist eine automatische Momentaufnahme der vorhandenen Proxmox-Gäste.
+            Die Erkennung konkreter Anwendungen, der Installationsplan und die
+            explizite Deployment-Freigabe sind noch in Entwicklung.
+            Keine Gäste oder Dienste wurden verändert.
       changed_when: false
