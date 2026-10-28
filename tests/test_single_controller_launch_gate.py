@@ -45,6 +45,23 @@ class SingleControllerLauncherTests(unittest.TestCase):
         self.assertNotIn('pct destroy', s)
         self.assertNotIn('--privileged 1', s)
 
+
+    def test_resume_repairs_existing_native_app_instead_of_reinstalling(self):
+        single = SINGLE.read_text()
+        repair = ROOT / "bootstrap" / "repair-ansibleforms-permissions.py"
+        self.assertTrue(repair.exists())
+        self.assertIn('pct push "$VMID" "$ROOT/bootstrap/repair-ansibleforms-permissions.py"', single)
+        self.assertIn('test -f /etc/systemd/system/ansibleforms.service', single)
+        self.assertIn('test -f /etc/systemd/system/ansibleforms-rte.service', single)
+        self.assertIn('repair-ansibleforms-permissions.py --apply', single)
+        self.assertIn('systemctl restart ansibleforms-rte ansibleforms', single)
+        self.assertIn('curl -kfLsS --max-time 8', single)
+        self.assertIn('pct exec "$VMID" -- systemctl is-active --quiet mariadb ansibleforms ansibleforms-rte', single)
+        self.assertNotIn("chmod -R", single)
+        self.assertNotIn("chown -R", single)
+        self.assertLess(single.index("Type RESUME 1001"),
+                        single.index('repair-ansibleforms-permissions.py --apply'))
+
     def test_native_installer_version_and_integrity_gate(self):
         src = NATIVE.read_text()
         self.assertIn("v7.4.2", src)
