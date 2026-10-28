@@ -15,6 +15,8 @@
     Sie benötigen keine Erfahrung mit Ansible oder Linux.
 
     Proxmox ist bereits die geprüfte Grundlage dieses Bootstrap-Verfahrens.
+    Vorhandene virtuelle Maschinen und Container werden lesend vom
+    Proxmox-Host erfasst. Sie müssen darüber keine Angaben machen.
     Danach klären wir, was Sie mit Ihrem Heimserver erreichen möchten.
     Die folgenden Fragen erstellen **nur eine unverbindliche Übersicht**.
     Es werden keine Server, Benutzer oder Dienste verändert.
@@ -26,10 +28,8 @@
   wizard:
     - subform: tb4h_start_goals
       title: "1 · Ihre Ziele"
-    - subform: tb4h_start_environment
-      title: "2 · Vorhandener Heimserver"
     - subform: tb4h_start_protection
-      title: "3 · Schutz und Zugang"
+      title: "2 · Schutz und Zugang"
 - name: tb4h_start_goals
   type: subform
   description: "Was soll Ihr Heimserver für Sie erledigen?"
@@ -65,26 +65,6 @@
       columns: [text]
       default: einsteiger
       required: true
-- name: tb4h_start_environment
-  type: subform
-  description: "Proxmox wurde für den Bootstrap bereits vorausgesetzt. Hier geht es nur um Ihre Wünsche."
-  fields:
-    - name: existing_services
-      type: enum
-      label: "Laufen auf dem Server bereits andere Anwendungen?"
-      values:
-        - id: ja
-          text: "Ja"
-        - id: nein
-          text: "Nein"
-        - id: weiss_nicht
-          text: "Ich weiß es nicht"
-      valueColumn: id
-      previewColumn: text
-      columns: [text]
-      default: weiss_nicht
-      required: true
-      help: "Vorhandene Anwendungen werden bei der Vorschau weder geändert noch gelöscht."
 - name: tb4h_start_protection
   type: subform
   description: "Datensicherung und privater Zugriff sind Grundlage der Planung."
