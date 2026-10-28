@@ -54,8 +54,16 @@ if [[ "$MODE" != resume ]]; then
     [[ -n "$STORAGE" ]] || STORAGE="$(ask "Rootfs storage, e.g. local-zfs")"
     [[ -n "$DNS" ]] || DNS="$(ask "Working IPv4 DNS server for guest")"
     if [[ -z "$KEY" ]]; then
-      echo "Optional administrator SSH public key path (Enter skips)"
-      KEY="$(ask 'Public key path')"
+      echo "SSH-Administrationsschlüssel aus bestehenden Login-Schlüsseln wählen."
+      KEY_TEMP_DIR="$(mktemp -d /run/tobe4home-key.XXXXXXXX)" ||
+        die "Cannot create private key staging directory"
+      chmod 0700 "$KEY_TEMP_DIR"
+      trap 'rm -rf -- "$KEY_TEMP_DIR"' EXIT
+      KEY="$KEY_TEMP_DIR/admin.pub"
+      KEY_HELPER="$ROOT/bootstrap/ssh_keys.py"
+      [[ -r "$KEY_HELPER" ]] || die "Missing public SSH key helper"
+      python3 "$KEY_HELPER" --interactive --destination "$KEY" ||
+        die "Public SSH key selection cancelled"
     fi
   fi
   [[ "$BRIDGE" =~ ^vmbr[0-9]{1,3}$ ]] || die "Invalid management bridge"
