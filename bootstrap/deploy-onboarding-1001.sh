@@ -65,9 +65,6 @@ pct push 1001 "$ROOT/ansibleforms/forms/tobe4home-start.yml" \
   /var/lib/tobe4home/tobe4home-start.yml --perms 0600
 pct push 1001 "$ROOT/ansibleforms/playbooks/tb4h-onboarding-preview.yml" \
   /var/lib/tobe4home/tb4h-onboarding-preview.yml --perms 0600
-pct exec 1001 -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
-  die "Welcome form not applied; other services and guests preserved"
-
 # PVE host only: never grant AnsibleForms access to Proxmox or scan other
 # guests. Exclude the controller; publish only anonymized guest counts.
 TB4H_INV_FILE="$(mktemp /tmp/tb4h-inventory.XXXXXXXX)" ||
@@ -80,6 +77,8 @@ pct push 1001 "$TB4H_INV_FILE" \
   die "Cannot stage host inventory"
 pct exec 1001 -- python3 /var/lib/tobe4home/install-proxmox-snapshot.py ||
   die "Snapshot verification failed; no guest reset"
+pct exec 1001 -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
+  die "Welcome form not applied; other services and guests preserved"
 
 pct exec 1001 -- systemctl restart ansibleforms ||
   die "AnsibleForms restart failed; examine journal, no reset needed"
