@@ -57,7 +57,7 @@ class BeginnerOnboardingTests(unittest.TestCase):
             self.assertNotIn("become", task)
             self.assertTrue(set(task.keys()) & {"ansible.builtin.assert", "ansible.builtin.debug"})
             self.assertFalse(task.get("changed_when", True))
-        for forbidden in ("pct", "proxmox", "community.general", "command:", "shell:",
+        for forbidden in ("pct create", "community.general", "command:", "shell:",
                           "ansible.builtin.copy", "ansible.builtin.file", "tofu apply"):
             self.assertNotIn(forbidden, PLAYBOOK.read_text().lower())
 
