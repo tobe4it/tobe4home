@@ -48,7 +48,8 @@ done
    -r "$ROOT/bootstrap/ct1001_remnant.py" &&
    -r "$ROOT/bootstrap/install-ansibleforms-native.sh" &&
    -r "$ROOT/bootstrap/repair-ansibleforms-permissions.py" &&
-   -r "$ROOT/bootstrap/check-controller-config.py" ]] ||
+   -r "$ROOT/bootstrap/check-controller-config.py" &&
+   -r "$ROOT/bootstrap/show-first-login.py" ]] ||
    die "Checkout incomplete"
 if [[ "$MODE" != resume ]]; then
   echo "tobe4home – single Controller CT1001 (no CT1000)"
@@ -223,6 +224,10 @@ pct push "$VMID" "$ROOT/bootstrap/install-ansibleforms-native.sh" \
   /var/lib/tobe4home/install-ansibleforms-native.sh --perms 0700
 pct push "$VMID" "$ROOT/bootstrap/repair-ansibleforms-permissions.py" \
   /var/lib/tobe4home/repair-ansibleforms-permissions.py --perms 0700
+# Keep the login reader INSIDE CT1001: no copy of the full app.env and no
+# credentials in shell arguments, Git, host files, or systemd journals.
+pct push "$VMID" "$ROOT/bootstrap/show-first-login.py" \
+  /var/lib/tobe4home/show-first-login.py --perms 0700
 # A failed native installation can leave fully installed systemd units but
 # inaccessible code directories due to a prior umask=077. --resume must
 # recover those units, not rerun setup or replace the existing database,
@@ -260,6 +265,13 @@ done
   die "AnsibleForms HTTPS localhost healthcheck failed; inspect journal and --resume"
 IP="$(pct exec "$VMID" -- ip -4 -o addr show dev eth0 |
   awk '{split($4,a,"/"); if(a[1]!=""){print a[1];exit}}')"
-echo "SINGLE-CONTROLLER CT1001 READY: https://$IP/"
-echo "Login: admin; password printed by upstream installer above."
-echo "No Proxmox credentials and no infrastructure guests have been deployed."
+[[ -n "$IP" ]] || die "Cannot determine controller IPv4, login panel withheld"
+[[ -t 0 && -t 1 ]] ||
+  die "Login credentials are only shown in an attended terminal"
+# LAST step: print a single compact login panel directly from the guarded
+# guest-side app.env parser. Do not print any more task output after this.
+# If the panel fails, --resume can safely revalidate and retry without
+# generating or resetting any account or password.
+pct exec "$VMID" -- python3 /var/lib/tobe4home/show-first-login.py --ip "$IP" ||
+  die "First-login details unavailable; keep CT1001 and use --resume"
+
