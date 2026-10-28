@@ -44,8 +44,8 @@
       label: "Ihr Auftrag in eigenen Worten"
       placeholder: "Ich möchte einen Dokumentenserver für unsere Familie mit OCR und getrennten Zugriffsrechten planen."
       help: "Nur Anforderungen beschreiben; keine Zugangsdaten oder internen Adressen."
-      minLength: 15
-      maxLength: 1600
+      # Limits (15..1600) are enforced by the read-only RTE assertions.
+      # AnsibleForms 7.4.2 textarea schema forbids minLength/maxLength.
       required: true
     - name: access_scope
       type: enum
