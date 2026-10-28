@@ -29,9 +29,11 @@ HOSTNAME = "tb4h-controller"
 PREVIOUS_GIT_BLOBS = {
     "tobe4home-start.yml": frozenset({
         "936a01a4ceaa113633e12be3f8f50ebc7037210e",
+        "542d547c291fcf10be655055673a5a5dc02d7307",
     }),
     "tb4h-onboarding-preview.yml": frozenset({
         "9f73491b8239a483e2d4390d5498499151e14be4",
+        "d2ae51227413f18b7ba10e6e2b080703793183ac",
     }),
 }
 
