@@ -71,6 +71,33 @@ https://<aktuelle-CT1001-IP>/form/tobe4home-dienstplanung
 Der Anmeldungsschritt verwendet das bestehende AnsibleForms-Konto.
 Es werden keine neuen Credentials erzeugt oder angezeigt.
 
+## Korrektur: Formular „Form not found“ nach dem ersten Import
+
+Die anfängliche Version des Formulars enthielt die für `textarea` unter
+AnsibleForms 7.4.2 **verbotenen Eigenschaften** `minLength` und
+`maxLength`. Das führte trotz erfolgreicher Installation der YAML-Datei
+zu einem nicht ladbaren Formular. Die zulässige neue Version entfernt die
+beiden Eigenschaften. Die Schranken (15 bis 1600 Zeichen) werden
+unverändert im ausschließlich lesenden RTE-Playbook geprüft.
+
+Der aktualisierte Installer darf **nur** das unveränderte, durch den
+Git-Blob `214c02698a2ea0650551317c97eee6681df62b4a`
+identifizierte erste Release ersetzen. Beliebige oder lokal veränderte
+Formulare blockieren die Nachrüstung. Das vorhandene Planungs-Playbook
+bleibt bei identischem Inhalt unverändert.
+
+Nach `git pull --ff-only` den selben Preview-/Apply-Pfad erneut
+verwenden. Das voraussichtliche Ergebnis ist:
+`TOBE4HOME_PLANNER_UPDATED=tobe4home-service-plan.yml`
+und
+`TOBE4HOME_PLANNER_UNCHANGED=tb4h-service-plan-preview.yml`.
+
+**Wichtig:** Der lokale HTTPS-Healthcheck bestätigt nur die WebApp,
+nicht die erfolgreiche Registrierung jedes einzelnen Formulars.
+Daher ist der anschließende Browseraufruf samt RTE-Test ein eigenes
+Abnahme-Gate. Auf `Form not found` keinesfalls mit Container-Neuanlage,
+MariaDB-Reset oder allgemeinem `chmod -R` reagieren.
+
 ## Akzeptanzprüfung
 
 1. Read-only-Vorschau zeigt `PREVIEW_ONLY=YES`.
