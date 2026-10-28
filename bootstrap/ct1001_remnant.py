@@ -144,8 +144,18 @@ def quarantine(
     # Refuse nonstandard parent paths and any symlink in the destination
     # tree. Do not create private artifacts in a redirected location.
     parent = destination_root.parent
-    if parent.is_symlink() or not parent.is_dir() or parent.lstat().st_uid != os.geteuid():
-        raise ValueError("Quarantine parent must be a real operator-owned directory")
+    if not parent.exists():
+        if parent.is_symlink():
+            raise ValueError("Quarantine parent cannot be a symlink")
+        grandparent = parent.parent
+        if (grandparent.is_symlink() or not grandparent.is_dir() or
+                grandparent.lstat().st_uid != os.geteuid()):
+            raise ValueError("Quarantine grandparent must be a real operator-owned directory")
+        parent.mkdir(mode=0o700)
+    if (parent.is_symlink() or not parent.is_dir() or
+            parent.lstat().st_uid != os.geteuid() or
+            parent.lstat().st_mode & 0o077):
+        raise ValueError("Quarantine parent must be a private operator-owned directory")
     if not destination_root.exists():
         destination_root.mkdir(mode=0o700)
     if destination_root.is_symlink() or not destination_root.is_dir():
