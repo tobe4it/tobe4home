@@ -79,7 +79,8 @@ class RuntimeDirectoryTests(unittest.TestCase):
                         src.index("rmdir -- /var/lib/lxc/1001"))
         self.assertLess(src.index("rmdir -- /var/lib/lxc/1001"),
                         src.index('pct create "$VMID"'))
-        self.assertIn("CT1001 leftover not empty", src)
+        self.assertIn("--quarantine-approved-ct1001", src)
+        self.assertIn("CT1001 runtime remnant is not eligible", src)
         self.assertEqual(subprocess.run(
             ["bash", "-n", str(SINGLE)], capture_output=True, text=True
         ).returncode, 0)
