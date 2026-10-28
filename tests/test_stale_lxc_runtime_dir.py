@@ -34,12 +34,26 @@ class RuntimeDirectoryTests(unittest.TestCase):
             candidate = Path(temp) / "1001"
             candidate.mkdir()
             (candidate / "rootfs").mkdir()
-            self.assertEqual(mod.classify_runtime_dir(candidate)[0], "FAIL")
+            status, detail = mod.classify_runtime_dir(candidate)
+            self.assertEqual(status, "FAIL")
+            self.assertIn("'rootfs' (directory)", detail)
             self.assertTrue((candidate / "rootfs").is_dir())
             (candidate / "rootfs").rmdir()
             (candidate / "config").write_text("untrusted")
             self.assertEqual(mod.classify_runtime_dir(candidate)[0], "FAIL")
             self.assertEqual((candidate / "config").read_text(), "untrusted")
+
+    def test_summarizes_entries_without_reading_private_content(self):
+        with tempfile.TemporaryDirectory() as temp:
+            candidate = Path(temp) / "1001"
+            candidate.mkdir()
+            (candidate / "rootfs").mkdir()
+            (candidate / "config").write_text("super-secret-do-not-display")
+            status, detail = mod.classify_runtime_dir(candidate)
+            self.assertEqual(status, "FAIL")
+            self.assertIn("'config' (file)", detail)
+            self.assertIn("'rootfs' (directory)", detail)
+            self.assertNotIn("super-secret-do-not-display", detail)
 
     def test_symlink_and_regular_file_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -59,6 +73,8 @@ class RuntimeDirectoryTests(unittest.TestCase):
         src = SINGLE.read_text()
         self.assertIn("rmdir -- /var/lib/lxc/1001", src)
         self.assertNotIn("rm -rf /var/lib/lxc", src)
+        self.assertLess(src.index('host_preflight.py" --storage'),
+                        src.index('python3 "$KEY_HELPER" --interactive'))
         self.assertLess(src.index("Type INSTALL 1001"),
                         src.index("rmdir -- /var/lib/lxc/1001"))
         self.assertLess(src.index("rmdir -- /var/lib/lxc/1001"),
