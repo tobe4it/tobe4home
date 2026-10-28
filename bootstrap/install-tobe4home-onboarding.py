@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import pwd
@@ -22,6 +23,24 @@ ASSETS = {
     "tb4h-onboarding-preview.yml": ("tb4h-onboarding-preview.yml", "playbooks"),
 }
 HOSTNAME = "tb4h-controller"
+
+# Exact Git blob digests of the previous shipped tobe4home welcome assets.
+# Updates those exact revisions only; never replaces operator-modified files.
+PREVIOUS_GIT_BLOBS = {
+    "tobe4home-start.yml": frozenset({
+        "936a01a4ceaa113633e12be3f8f50ebc7037210e",
+    }),
+    "tb4h-onboarding-preview.yml": frozenset({
+        "9f73491b8239a483e2d4390d5498499151e14be4",
+    }),
+}
+
+
+def approved_previous_blob(name: str, data: bytes) -> bool:
+    head = b"blob " + str(len(data)).encode("ascii") + b"\\x00"
+    digest = hashlib.sha1(head + data, usedforsecurity=False).hexdigest()
+    return digest in PREVIOUS_GIT_BLOBS.get(name, frozenset())
+
 
 
 def real_dir(path: Path) -> None:
@@ -63,9 +82,13 @@ def install_asset(source: Path, target: Path, uid: int, gid: int) -> str:
         if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
             raise ValueError(f"Unexpected target file type: {target.name}")
         current = stage_bytes(target)
-        if current != expected:
+        if current == expected:
+            return "UNCHANGED"
+        if not approved_previous_blob(target.name, current):
             raise ValueError(f"Existing locally modified form/playbook; refusing replacement: {target.name}")
-        return "UNCHANGED"
+        upgrading = True
+    else:
+        upgrading = False
     fd, temp_name = tempfile.mkstemp(prefix=".tb4h-", dir=target.parent)
     temp = Path(temp_name)
     try:
@@ -84,7 +107,7 @@ def install_asset(source: Path, target: Path, uid: int, gid: int) -> str:
             os.close(fd)
         if temp.exists():
             temp.unlink()
-    return "CREATED"
+    return "UPDATED" if upgrading else "CREATED"
 
 
 def deploy(stage: Path = STAGE, data: Path = DATA, owner_uid: int | None = None, owner_gid: int | None = None) -> dict:
@@ -114,7 +137,8 @@ def deploy(stage: Path = STAGE, data: Path = DATA, owner_uid: int | None = None,
             existing = target.lstat()
             if not stat.S_ISREG(existing.st_mode) or existing.st_nlink != 1:
                 raise ValueError(f"Unexpected target file type: {dst}")
-            if stage_bytes(target) != source_bytes:
+            current_bytes = stage_bytes(target)
+            if current_bytes != source_bytes and not approved_previous_blob(dst, current_bytes):
                 raise ValueError(f"Existing locally modified form/playbook; refusing replacement: {dst}")
     results = {}
     for name, (dst, folder) in ASSETS.items():
