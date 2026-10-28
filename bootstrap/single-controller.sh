@@ -90,7 +90,7 @@ assert isinstance(xs,list)
 assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
 ' <<< "$RESOURCES" || die "VMID 1001 allocated"
   pct config "$VMID" >/dev/null 2>&1 && die "CT1001 already exists; use --resume"
-  # Proxmox pct destroy can leave an *empty* /var/lib/lxc/1001 directory.
+  # Proxmox guest removal can leave an *empty* /var/lib/lxc/1001 directory.
   # The read-only preflight reports WARN in that case, and FAIL for nonempty
   # directories/symlinks. Only an empty directory may be removed with rmdir
   # after INSTALL 1001 approval, never rm -rf.
