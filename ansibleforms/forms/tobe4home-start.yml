@@ -14,7 +14,8 @@
 
     Sie benötigen keine Erfahrung mit Ansible oder Linux.
 
-    Wir klären zuerst, was Sie mit Ihrem Heimserver erreichen möchten.
+    Proxmox ist bereits die geprüfte Grundlage dieses Bootstrap-Verfahrens.
+    Danach klären wir, was Sie mit Ihrem Heimserver erreichen möchten.
     Die folgenden Fragen erstellen **nur eine unverbindliche Übersicht**.
     Es werden keine Server, Benutzer oder Dienste verändert.
 
@@ -66,22 +67,8 @@
       required: true
 - name: tb4h_start_environment
   type: subform
-  description: "Wenige Fragen zur vorhandenen Infrastruktur."
+  description: "Proxmox wurde für den Bootstrap bereits vorausgesetzt. Hier geht es nur um Ihre Wünsche."
   fields:
-    - name: proxmox_available
-      type: enum
-      label: "Ist Proxmox bereits auf Ihrem Server installiert?"
-      values:
-        - id: ja
-          text: "Ja, Proxmox ist installiert"
-        - id: weiss_nicht
-          text: "Ich bin mir nicht sicher"
-      valueColumn: id
-      previewColumn: text
-      columns: [text]
-      default: ja
-      required: true
-      help: "Dieser erste Bootstrap setzt einen bestehenden Proxmox-Host voraus."
     - name: existing_services
       type: enum
       label: "Laufen auf dem Server bereits andere Anwendungen?"
