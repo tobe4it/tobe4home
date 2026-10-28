@@ -72,16 +72,28 @@ Standardoberfläche zeigt zunächst upstream-seitige Beispielformulare,
 welche für die eigentliche Zielgruppe zu technisch sind.
 
 Auf einem neuen Single-Controller-Bootstrap werden daher zusätzlich
-die beiden tobe4home-eigenen Dateien im bestehenden AnsibleForms
+die tobe4home-eigenen Dateien im bestehenden AnsibleForms
 `/opt/ansibleforms/data/` installiert:
 
-- `forms/tobe4home-start.yml`: deutschsprachiger dreiseitiger
-  Einrichtungsassistent („Ihre Ziele“, „Vorhandener Heimserver“,
-  „Schutz und Zugang“), mit verständlichen Auswahltexten. **Proxmox
-  wird nicht als Frage gestellt:** Der Bootstrap erfordert und prüft
-  Proxmox vor der Bereitstellung des Controllers.
+- `forms/tobe4home-start.yml`: deutschsprachiger **zweiseitiger**
+  Assistent („Ihre Ziele“, „Schutz und Zugang“), mit verständlichen
+  Auswahltexten. **Proxmox und vorhandene Anwendungen werden nicht
+  erfragt.** Der Bootstrap läuft ohnehin auf einem geprüften Proxmox-Host.
 - `playbooks/tb4h-onboarding-preview.yml`: ein ausschließlich lesender
   Ansible-Job, der die Antworten validiert und eine Übersicht erstellt.
+- `playbooks/tb4h-proxmox-snapshot.json`: vom Bootstrap automatisch
+  erstellte, anonymisierte **Momentaufnahme** vorhandener LXC und VMs,
+  getrennt nach Gesamtzahl und laufenden Gästen, ohne CT1001.
+
+Die Ermittlung erfolgt ausschließlich lesend auf dem Proxmox-Host über
+`pct list` und `qm list`. Gespeichert werden weder VMIDs noch Namen,
+Hostadressen oder Proxmox-API-Zugangsdaten. In CT1001 wird nur die
+reduzierte JSON-Zählung unter
+`/opt/ansibleforms/data/playbooks/tb4h-proxmox-snapshot.json` hinterlegt.
+Die Sammlung läuft nach ausdrücklicher `INSTALL 1001`- bzw.
+`ONBOARD 1001`-Freigabe automatisch mit. Misslingt sie, wird der Vorgang
+mit einem eindeutigen Fehler beendet; fehlende Daten werden nicht als
+„keine vorhandenen Dienste“ interpretiert.
 
 Der neue direkte Einstieg ist `https://<controller-ip>/form/tobe4home-start`;
 der Bootstrap zeigt ihn neben der Hauptadresse und dem Initialpasswort
@@ -101,7 +113,8 @@ sudo bash /root/tobe4home-bootstrap/bootstrap/deploy-onboarding-1001.sh --apply
 ```
 
 Das Nachrüstskript verifiziert zunächst die exakt zu tobe4home gehörende
-VMID 1001, hält den Scope auf zwei Dateien begrenzt und verweigert
+VMID 1001, hält den Scope auf die beiden tobe4home-Formulardateien
+und die separate read-only-Bestandsaufnahme begrenzt und verweigert
 abweichende vorhandene Formulare. Lediglich exakt identifizierte, zuvor
 ausgelieferte tobe4home-Versionen können aktualisiert werden; persönlich
 bearbeitete Formulare werden nicht überschrieben. Ausschließlich
@@ -110,10 +123,15 @@ Datenbank, Credentials, andere Anwendungen und Proxmox-Gäste bleiben
 bestehen. Der Aufruf benötigt eine betreute SSH-Konsole.
 
 **Wichtig:** Der neu bereitgestellte Assistent ist ausdrücklich eine
-**Vorschau und Benutzereinführung**. Echte Proxmox-Bestandsaufnahme,
-Speicherung der Standortkonfiguration, überprüfbare Topologieplanung,
-OpenTofu-/Ansible-Ausführung, Deployment-Genehmigung und Fortschrittsanzeige
-sind **noch nicht implementiert**. Ein erfolgreich geladener Startdialog
+**Vorschau und Benutzereinführung**. Die bereits integrierte
+Proxmox-Bestandsaufnahme zählt ausschließlich LXC und VMs **zum Zeitpunkt
+des Bootstrap oder der expliziten Nachrüstung**, sie ist **kein Live-Monitor**
+und keine Identifikation konkreter Anwendungen innerhalb der Gäste.
+Für spätere Erkennung von Diensten sind explizite, beschränkte
+Schnittstellen zu planen. Speicherung der Standortkonfiguration,
+überprüfbare Topologieplanung, OpenTofu-/Ansible-Ausführung,
+Deployment-Genehmigung und Fortschrittsanzeige sind **noch nicht
+implementiert**. Ein erfolgreich geladener Startdialog
 ist kein Beweis, dass die Plattform bereits automatisch Dienste aufbaut.
 Diese Akzeptanzprüfungen dürfen nicht als bestanden markiert werden.
 
