@@ -63,11 +63,18 @@ pct exec 1001 -- python3 /var/lib/tobe4home/install-tobe4home-onboarding.py ||
 
 pct exec 1001 -- systemctl restart ansibleforms ||
   die "AnsibleForms restart failed; examine journal, no reset needed"
-pct exec 1001 -- systemctl is-active --quiet ansibleforms ansibleforms-rte ||
-  die "AnsibleForms did not return to active state"
-pct exec 1001 -- curl -kfLsS --max-time 15 \
-  -o /dev/null https://127.0.0.1/ ||
-  die "HTTPS health failed; inspect service; do not delete CT1001"
+READY=0
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  if pct exec 1001 -- systemctl is-active --quiet ansibleforms ansibleforms-rte &&
+     pct exec 1001 -- curl -kfLsS --max-time 8 \
+       -o /dev/null https://127.0.0.1/ >/dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  [[ "$attempt" == 10 ]] || sleep 3
+done
+(( READY == 1 )) ||
+  die "HTTPS or native services unhealthy after UI restart; no CT reset performed"
 IP="$(pct exec 1001 -- ip -4 -o addr show dev eth0 |
   awk '{split($4,a,"/");if(a[1]!=""){print a[1];exit}}')"
 [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
