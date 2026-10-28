@@ -54,6 +54,23 @@ inspect() {
   if grep -Eq '^rootfs: .*[,](acl|mountoptions|quota|replicate)=' <<<"$cfg"; then
     die "Unexpected custom rootfs features"
   fi
+  # Only settings that the original single-controller bootstrap can
+  # create are permitted. Any additional device, disk or security override
+  # must be reviewed manually instead of invoking the destructive reset.
+  python3 -c '
+import sys
+allowed = {
+    "arch", "cores", "description", "hostname", "memory", "net0",
+    "nameserver", "onboot", "ostype", "rootfs", "swap", "tags",
+    "unprivileged",
+}
+for line in sys.stdin:
+    if not line.strip():
+        continue
+    key, sep, value = line.partition(": ")
+    if not sep or key not in allowed:
+        raise SystemExit(f"Unexpected CT1001 config key: {key[:40]}")
+' <<<"$cfg" || die "CT1001 has non-bootstrap settings; manual review needed"
 
   cluster="$(pvesh get /cluster/resources --type vm --output-format json)" ||
     die "Cluster VMID inventory unavailable"
