@@ -45,6 +45,15 @@ inspect() {
   python3 "$ROOT/bootstrap/check-controller-config.py" <<<"$cfg" ||
     die "CT1001 does not have the exact disposable controller identity"
 
+  # pct config may show only the active configuration. Inspect the raw
+  # local Proxmox config as well to reject hidden snapshot sections.
+  local raw_conf="/etc/pve/lxc/1001.conf"
+  [[ -f "$raw_conf" && ! -L "$raw_conf" && -r "$raw_conf" ]] ||
+    die "Local Proxmox configuration not readable as an ordinary file"
+  if grep -Eq '^\[[^]]+\]|^(lock|unused[0-9]+|mp[0-9]+|hookscript|lxc[.][^:]*):' "$raw_conf"; then
+    die "Raw Proxmox CT1001 configuration contains snapshots, locks or extra mounts"
+  fi
+
   # Refuse any additional or host-backed mounts, data disks, backup locks,
   # snapshots, hooks or arbitrary low-level LXC directives. A new test CT
   # must match the single-rootfs topology created by this bootstrap.
