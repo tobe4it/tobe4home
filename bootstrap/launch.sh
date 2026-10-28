@@ -4,6 +4,22 @@
 set -Eeuo pipefail
 umask 077
 
+# FAIL CLOSED: legacy launcher still provisions a disposable -setup guest.
+# ADR-001/002 mandate a direct Single-Controller bootstrap with AnsibleForms.
+# Until that has a genuine end-to-end implementation and Proxmox acceptance
+# test, never silently present the old wizard as the new installer.
+cat >&2 <<'TB4H_NOT_READY'
+TOBE4HOME CONTROLLER BOOTSTRAP – NO RELEASED INSTALLER
+This branch still contains the obsolete Stage-0 setup-LXC workflow.
+The new single-controller bootstrap (CT 1001, AnsibleForms/OpenTofu)
+is not yet implemented or accepted on Proxmox.
+NO CONTAINER CREATED. Do not run the old wizard for a fresh install.
+Review docs/ADR-001-SINGLE-CONTROLLER.md and
+docs/CONTROLLER-INTEGRATION.md for the read-only development preview.
+TB4H_NOT_READY
+exit 3
+
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP="$ROOT/bootstrap/bootstrap.sh"
 NETWORKS="$ROOT/bootstrap/networks.py"
