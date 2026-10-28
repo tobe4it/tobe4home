@@ -77,7 +77,9 @@ die beiden tobe4home-eigenen Dateien im bestehenden AnsibleForms
 
 - `forms/tobe4home-start.yml`: deutschsprachiger dreiseitiger
   Einrichtungsassistent („Ihre Ziele“, „Vorhandener Heimserver“,
-  „Schutz und Zugang“), mit verständlichen Auswahltexten.
+  „Schutz und Zugang“), mit verständlichen Auswahltexten. **Proxmox
+  wird nicht als Frage gestellt:** Der Bootstrap erfordert und prüft
+  Proxmox vor der Bereitstellung des Controllers.
 - `playbooks/tb4h-onboarding-preview.yml`: ein ausschließlich lesender
   Ansible-Job, der die Antworten validiert und eine Übersicht erstellt.
 
@@ -100,8 +102,10 @@ sudo bash /root/tobe4home-bootstrap/bootstrap/deploy-onboarding-1001.sh --apply
 
 Das Nachrüstskript verifiziert zunächst die exakt zu tobe4home gehörende
 VMID 1001, hält den Scope auf zwei Dateien begrenzt und verweigert
-abweichende vorhandene Formulare; ausschließlich AnsibleForms wird zur
-Neuladung der Benutzeroberfläche kurz neu gestartet. Der Gast, dessen
+abweichende vorhandene Formulare. Lediglich exakt identifizierte, zuvor
+ausgelieferte tobe4home-Versionen können aktualisiert werden; persönlich
+bearbeitete Formulare werden nicht überschrieben. Ausschließlich
+AnsibleForms wird zur Neuladung der Benutzeroberfläche kurz neu gestartet. Der Gast, dessen
 Datenbank, Credentials, andere Anwendungen und Proxmox-Gäste bleiben
 bestehen. Der Aufruf benötigt eine betreute SSH-Konsole.
 
