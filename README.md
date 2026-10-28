@@ -33,47 +33,64 @@ The automated validation workflow currently checks Python contracts and bilingua
 English and German setup and operations documentation is available under `docs/` and `docs/handbook/`. A newcomer path starts with infrastructure prerequisites and basic security; advanced integrations are optional.
 
 
-## Installation status: single-controller bootstrap in development
+## Installation status: direct CT 1001 test installer
 
-**No new installation is currently enabled.** The earlier Stage-0 wizard
-created a separate `*-setup` LXC, then required a second Ansible LXC.
-That design is obsolete and conflicts with the accepted
-[Single-Controller architecture](docs/ADR-001-SINGLE-CONTROLLER.md).
+**Experimental single-controller first-install path is implemented in the
+development branch; not yet validated by a live Proxmox acceptance run.**
 
-The new installer will collect only initial Proxmox options in its host
-terminal menu and create **one** permanent controller LXC, normally
-CT 1001, with [AnsibleForms](docs/ADR-002-ANSIBLEFORMS-UI.md)
-and an Ansible/OpenTofu runtime. That controller will discover
-infrastructure, show a reviewable plan, obtain explicit approval and
-install only approved additional guests.
+The obsolete two-container Stage-0+Stage-1 chain is no longer used by
+`bootstrap/launch.sh`. The launcher now starts
+`bootstrap/single-controller.sh`, which discovers resources read-only,
+prompts for network/storage/DNS and an existing administrative SSH public
+key, and prints a preview before the explicit `INSTALL 1001` approval.
+The intended target is **only CT 1001** (`tb4h-controller`), an
+unprivileged Rocky Linux 10 LXC with 4 vCPU, 4096 MiB RAM, 40 GiB
+rootfs and onboot disabled while testing.
 
-Until this controller bootstrap and its end-to-end Proxmox acceptance
-tests are implemented, **`bootstrap/launch.sh` intentionally exits with
-code 3 and prints an explicit not-ready message before any write**.
-Do not use `bootstrap/installer-tui.sh` or
-`bootstrap/bootstrap.sh --apply` to bypass the restriction: these
-are the deprecated two-container prototype, retained for regression tests.
+Once CT 1001 is created, the installer checks guest DNS and starts
+the officially published **AnsibleForms 7.4.2 native/systemd**
+installer (verified AMD64 binary + SHA-256). The upstream installer
+installs MariaDB and an independent Ansible Runtime Environment. The
+web portal is expected on HTTPS port 443. No Docker or Podman nesting
+is required for this first run. The generated admin password is printed
+to the operator; do not post it in public logs.
 
-The repository already contains a non-mutating
-[development preview and integration guide](docs/CONTROLLER-INTEGRATION.md)
-for the read-only Proxmox inventory exporter, deterministic planner,
-HTML topology, synthetic AnsibleForms wizard and OpenTofu HCL preview.
-**Neither AnsibleForms nor OpenTofu is yet installed by this branch.**
-The generated OpenTofu configuration does not call `apply`.
+**Do not confuse this with a finished self-provisioning platform:**
+the automatic tobe4home forms, live Proxmox API credentials, OpenTofu
+state/approval/executor gateway, CI and guest configuration workflows
+still require actual integration and acceptance. No additional guests
+are created by this bootstrap.
 
-The former test guests CT 1000 and CT 1001 were explicitly removed from
-the test Proxmox host on 28 October 2026; they must not be assumed present
-by any later migration or installation scripts.
-
-### Source checkout for review (no installation)
+### Next clean-install attempt on Proxmox
 
 ```bash
-git -C /root/tobe4home-bootstrap pull --ff-only
-bash /root/tobe4home-bootstrap/bootstrap/launch.sh
-# Expected while not ready: explicit diagnostic and exit code 3.
+sudo git -C /root/tobe4home-bootstrap pull --ff-only
+sudo bash /root/tobe4home-bootstrap/bootstrap/launch.sh
+# Inspect the read-only plan. No resources change.
+sudo bash /root/tobe4home-bootstrap/bootstrap/launch.sh --apply
+# Inspect again, type exactly INSTALL 1001.
 ```
 
-The development branch is mutable. Wait for a tagged and verified installer
-release before using any host-root provisioning command. No site-private
-values or credentials may be committed to the public repository.
+Use a verified reachable DNS resolver for the guest. SSH keys are
+selected from existing authorized login keys by fingerprint; no
+private key crosses into the container. Do not use legacy
+`bootstrap/bootstrap.sh` or `bootstrap/deploy-ansible-controller.sh`
+for a fresh installation.
 
+If CT 1001 is created but DNF or the native AnsibleForms installer
+fails, **do not recreate or delete it**. After diagnosing the failure:
+
+```bash
+sudo bash /root/tobe4home-bootstrap/bootstrap/launch.sh --resume
+# Inspect exact CT1001 identity; type RESUME 1001.
+```
+
+The new path must still pass a live Proxmox/DNS/LXC/HTTPS acceptance
+test before being called a released installer. The branch is mutable;
+inspect the Git diff and CI before running host-root provisioning.
+
+The previous test guests CT 1000 and CT 1001 were deleted on
+28 October 2026. The new clean-install test has no dependencies on
+their old local state. [Development planning and integration status]
+(docs/CONTROLLER-INTEGRATION.md) documents read-only inventory,
+graphical topology preview and OpenTofu plan-generation work.
