@@ -34,6 +34,7 @@ PREVIOUS_GIT_BLOBS = {
     "tb4h-onboarding-preview.yml": frozenset({
         "9f73491b8239a483e2d4390d5498499151e14be4",
         "d2ae51227413f18b7ba10e6e2b080703793183ac",
+        "d7c71879ccadc0875bb12707e991b7b9afb4418c",
     }),
 }
 
