@@ -24,20 +24,22 @@ spec.loader.exec_module(mod)
 class BeginnerOnboardingTests(unittest.TestCase):
     def test_wizard_is_in_german_with_no_proxmox_or_admin_secrets(self):
         forms = yaml.safe_load(FORM.read_text())
-        self.assertEqual(len(forms), 4)
+        self.assertEqual(len(forms), 3)
         first = forms[0]
         self.assertEqual(first["name"], "tobe4home Start")
         self.assertEqual(first["type"], "ansible")
         self.assertEqual(first["playbook"], PLAYBOOK.name)
         self.assertIn("Willkommen", first["help"])
         self.assertIn("noch nicht implementiert", first["help"])
-        self.assertEqual(len(first["wizard"]), 3)
-        self.assertEqual(len({f["name"] for f in forms}), 4)
+        self.assertEqual(len(first["wizard"]), 2)
+        self.assertEqual(len({f["name"] for f in forms}), 3)
         # The only supported bootstrap requires a verified Proxmox host.
         self.assertNotIn("proxmox_available", FORM.read_text().lower())
         self.assertNotIn("Ist Proxmox", FORM.read_text())
         self.assertIn("Proxmox ist bereits", first["help"])
-        self.assertEqual(len(forms[2]["fields"]), 1)
+        self.assertEqual(len(forms[2]["fields"]), 2)
+        self.assertNotIn("existing_services", FORM.read_text())
+        self.assertNotIn("Laufen auf dem Server", FORM.read_text())
         for subform in forms[1:]:
             self.assertEqual(subform["type"], "subform")
             for field in subform["fields"]:
@@ -63,6 +65,8 @@ class BeginnerOnboardingTests(unittest.TestCase):
             self.assertTrue(set(task.keys()) & {"ansible.builtin.assert", "ansible.builtin.debug"})
             self.assertFalse(task.get("changed_when", True))
         self.assertNotIn("proxmox_available", PLAYBOOK.read_text().lower())
+        self.assertNotIn("existing_services", PLAYBOOK.read_text().lower())
+        self.assertIn("tb4h-proxmox-snapshot.json", PLAYBOOK.read_text())
         self.assertIn("proxmox_basis", play["tasks"][1]["ansible.builtin.debug"]["msg"])
         for forbidden in ("pct create", "community.general", "command:", "shell:",
                           "ansible.builtin.copy", "ansible.builtin.file", "tofu apply"):
@@ -124,6 +128,8 @@ class BeginnerOnboardingTests(unittest.TestCase):
     def test_bootstrap_installs_form_before_health_and_password_panel(self):
         src = MAIN.read_text()
         self.assertIn("install-tobe4home-onboarding.py", src)
+        self.assertIn("collect-proxmox-inventory.py", src)
+        self.assertIn("install-proxmox-snapshot.py", src)
         self.assertIn('pct push "$VMID" "$ROOT/ansibleforms/forms/tobe4home-start.yml"', src)
         self.assertIn('pct push "$VMID" "$ROOT/ansibleforms/playbooks/tb4h-onboarding-preview.yml"', src)
         self.assertLess(
