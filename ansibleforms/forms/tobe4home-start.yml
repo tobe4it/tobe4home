@@ -1,0 +1,83 @@
+# tobe4home-first-run; automatically seeded into AnsibleForms 7 forms folder.
+# Phase 0 onboarding ONLY: no Proxmox credentials or write operations.
+- name: "tobe4home Start"
+  type: ansible
+  roles:
+    - default
+  categories:
+    - Default
+  description: "Ihr eigener Heimserver – einfach und Schritt für Schritt einrichten."
+  icon: house
+  showHelp: true
+  help: |
+    # Willkommen bei tobe4home
+
+    Sie benötigen keine Erfahrung mit Ansible oder Linux.
+
+    Wir klären zuerst, was Sie mit Ihrem Heimserver erreichen möchten.
+    Die folgenden Fragen erstellen **nur eine unverbindliche Übersicht**.
+    Es werden keine Server, Benutzer oder Dienste verändert.
+
+    **Entwicklungsstand:** Die automatische Einrichtung und Freigabe neuer
+    Dienste ist noch nicht implementiert. Die Installation von AnsibleForms
+    allein ist noch keine fertige tobe4home-Umgebung.
+  playbook: tb4h-onboarding-preview.yml
+  wizard:
+    - subform: tb4h_start_goals
+      title: "1 · Ihre Ziele"
+    - subform: tb4h_start_environment
+      title: "2 · Vorhandener Heimserver"
+    - subform: tb4h_start_protection
+      title: "3 · Schutz und Zugang"
+- name: tb4h_start_goals
+  type: subform
+  description: "Was soll Ihr Heimserver für Sie erledigen?"
+  fields:
+    - name: home_goal
+      type: enum
+      label: "Wobei soll tobe4home zuerst helfen?"
+      values: [familie, smart_home, beides]
+      default: familie
+      required: true
+      help: "familie = Dateien, Dokumente und gemeinsames Wissen; smart_home = Hausautomation; beides = Kombination"
+    - name: experience
+      type: enum
+      label: "Wie viel Erfahrung haben Sie mit Heimservern?"
+      values: [einsteiger, etwas_erfahrung, erfahren]
+      default: einsteiger
+      required: true
+- name: tb4h_start_environment
+  type: subform
+  description: "Wenige Fragen zur vorhandenen Infrastruktur."
+  fields:
+    - name: proxmox_available
+      type: enum
+      label: "Ist Proxmox bereits auf Ihrem Server installiert?"
+      values: [ja, weiss_nicht]
+      default: ja
+      required: true
+      help: "Dieser erste Bootstrap setzt einen bestehenden Proxmox-Host voraus."
+    - name: existing_services
+      type: enum
+      label: "Laufen auf dem Server bereits andere Anwendungen?"
+      values: [ja, nein, weiss_nicht]
+      default: weiss_nicht
+      required: true
+      help: "Vorhandene Anwendungen werden bei der Vorschau weder geändert noch gelöscht."
+- name: tb4h_start_protection
+  type: subform
+  description: "Datensicherung und privater Zugriff sind Grundlage der Planung."
+  fields:
+    - name: backup_available
+      type: enum
+      label: "Gibt es bereits eine Datensicherung außerhalb des Servers?"
+      values: [ja, nein, weiss_nicht]
+      default: weiss_nicht
+      required: true
+    - name: access_scope
+      type: enum
+      label: "Von wo aus sollen Ihre Dienste später erreichbar sein?"
+      values: [nur_zuhause, auch_unterwegs, weiss_nicht]
+      default: nur_zuhause
+      required: true
+      help: "Öffentlicher Zugriff wird nicht automatisch eingerichtet."
