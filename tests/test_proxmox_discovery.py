@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 COLLECT = ROOT / "bootstrap/collect-proxmox-inventory.py"
@@ -55,6 +56,36 @@ class ProxmoxDiscoveryTests(unittest.TestCase):
         self.assertEqual(data["qemu"]["total"], 0)
         with self.assertRaises(ValueError):
             collector.overview("", "VMID NAME STATUS\n")
+
+    def test_qm_list_without_vms_yields_zero_only_after_success(self):
+        # Some Proxmox versions omit even the qm header for an empty node.
+        with patch.object(collector.subprocess, "run",
+                          return_value=SimpleNamespace(
+                              returncode=0, stdout="", stderr="")) as run:
+            canonical = collector.run_list(("qm", "list"))
+            self.assertEqual(canonical, "VMID NAME STATUS\\n")
+            self.assertEqual(collector.overview(PCT, canonical)["qemu"],
+                             {"total": 0, "running": 0})
+            run.assert_called_once()
+        # Parsing an unverified blank result directly must still fail.
+        with self.assertRaises(ValueError):
+            collector.parse_list("", "qemu")
+
+    def test_no_vms_must_not_hide_cli_failures_or_warnings(self):
+        for result in (
+            SimpleNamespace(returncode=1, stdout="", stderr="command failed"),
+            SimpleNamespace(returncode=0, stdout="", stderr="unexpected warning"),
+        ):
+            with self.subTest(result=result), patch.object(
+                    collector.subprocess, "run", return_value=result):
+                with self.assertRaises((RuntimeError, ValueError)):
+                    collector.run_list(("qm", "list"))
+        # Never reinterpret a missing pct inventory as zero LXCs.
+        with patch.object(collector.subprocess, "run",
+                          return_value=SimpleNamespace(
+                              returncode=0, stdout="", stderr="")):
+            with self.assertRaises(ValueError):
+                collector.run_list(("pct", "list"))
 
     def test_bad_status_and_duplicate_vmids_fail_closed(self):
         for raw in (
