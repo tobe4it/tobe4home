@@ -77,6 +77,31 @@ private key crosses into the container. Do not use legacy
 `bootstrap/bootstrap.sh` or `bootstrap/deploy-ansible-controller.sh`
 for a fresh installation.
 
+### Repeat-install remediation after deletion of old CT1001
+
+A deleted guest may leave an **empty** local runtime directory
+`/var/lib/lxc/1001`, even though the CT config and rootfs storage volume
+no longer exist. The read-only host preflight now reports this as a WARN;
+after the exact `INSTALL 1001` confirmation, the bootstrap independently
+rechecks cluster VMID, CT config and rootfs volumes, then uses **`rmdir`
+only** on that completely empty directory. It never recursively deletes
+LXC data.
+
+If the path is nonempty, a symlink, or unreadable, the bootstrap still
+fails closed. Inspect it without making changes:
+
+```bash
+sudo ls -ld -- /var/lib/lxc/1001
+sudo find -P /var/lib/lxc/1001 -mindepth 1 -maxdepth 2 -printf '%y %p\n'
+sudo pct config 1001
+sudo pvesm list local-zfs --content rootdir | grep -E '1001|Volid' || true
+```
+
+Do **not** use `--resume` when `pct config 1001` says the guest does not
+exist. Resume is only for a partially provisioned CT actually owned by
+this installer. A default gateway IP is not necessarily a working DNS
+resolver; guest repository resolution is verified before invoking DNF.
+
 If CT 1001 is created but DNF or the native AnsibleForms installer
 fails, **do not recreate or delete it**. After diagnosing the failure:
 
