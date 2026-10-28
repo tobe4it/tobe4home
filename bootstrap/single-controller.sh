@@ -53,18 +53,6 @@ if [[ "$MODE" != resume ]]; then
     [[ -n "$BRIDGE" ]] || BRIDGE="$(ask "Management bridge, e.g. vmbr3")"
     [[ -n "$STORAGE" ]] || STORAGE="$(ask "Rootfs storage, e.g. local-zfs")"
     [[ -n "$DNS" ]] || DNS="$(ask "Working IPv4 DNS server for guest")"
-    if [[ -z "$KEY" ]]; then
-      echo "SSH-Administrationsschlüssel aus bestehenden Login-Schlüsseln wählen."
-      KEY_TEMP_DIR="$(mktemp -d /run/tobe4home-key.XXXXXXXX)" ||
-        die "Cannot create private key staging directory"
-      chmod 0700 "$KEY_TEMP_DIR"
-      trap 'rm -rf -- "$KEY_TEMP_DIR"' EXIT
-      KEY="$KEY_TEMP_DIR/admin.pub"
-      KEY_HELPER="$ROOT/bootstrap/ssh_keys.py"
-      [[ -r "$KEY_HELPER" ]] || die "Missing public SSH key helper"
-      python3 "$KEY_HELPER" --interactive --destination "$KEY" ||
-        die "Public SSH key selection cancelled"
-    fi
   fi
   [[ "$BRIDGE" =~ ^vmbr[0-9]{1,3}$ ]] || die "Invalid management bridge"
   [[ "$STORAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$ ]] || die "Invalid storage"
@@ -107,6 +95,20 @@ assert not any(int(x.get("vmid",-1))==1001 for x in xs if isinstance(x,dict))
   CACHED=no
   TPATH="$(pvesm path "$TEMPLATE" 2>/dev/null || true)"
   [[ -n "$TPATH" && -s "$TPATH" ]] && CACHED=yes
+  # Only ask for a key after host/VMID/storage preflight passes. An invalid
+  # or stale LXC runtime path must not require repeated interactive selection.
+  if [[ -z "$KEY" && -t 0 ]]; then
+    echo "SSH-Administrationsschlüssel aus bestehenden Login-Schlüsseln wählen."
+    KEY_TEMP_DIR="$(mktemp -d /run/tobe4home-key.XXXXXXXX)" ||
+      die "Cannot create private key staging directory"
+    chmod 0700 "$KEY_TEMP_DIR"
+    trap 'rm -rf -- "$KEY_TEMP_DIR"' EXIT
+    KEY="$KEY_TEMP_DIR/admin.pub"
+    KEY_HELPER="$ROOT/bootstrap/ssh_keys.py"
+    [[ -r "$KEY_HELPER" ]] || die "Missing public SSH key helper"
+    python3 "$KEY_HELPER" --interactive --destination "$KEY" ||
+      die "Public SSH key selection cancelled"
+  fi
   if [[ -n "$KEY" ]]; then
     [[ -r "$KEY" ]] || die "Public key unreadable"
     [[ $(wc -l < "$KEY") == 1 ]] || die "Exactly one SSH public key required"
