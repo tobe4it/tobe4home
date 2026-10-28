@@ -102,7 +102,7 @@ class ProxmoxDiscoveryTests(unittest.TestCase):
             first = collector.overview(PCT, QM)
             source.write_text(json.dumps(first))
             with patch.object(installer.os, "fchown"):
-                self.assertEqual(installer.write_snapshot(source, target, 1001, 1001), "CREATED")
+                self.assertEqual(installer.write_snapshot(source, target, os.getuid() or 1001, os.getgid() or 1001), "CREATED")
                 self.assertEqual(installer.write_snapshot(source, target, 1001, 1001), "UNCHANGED")
                 second = collector.overview("VMID Status Lock Name\n200 running test\n", QM)
                 source.write_text(json.dumps(second))
