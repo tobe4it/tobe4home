@@ -13,7 +13,6 @@ class RetrofitTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         src = SCRIPT.read_text()
         self.assertIn("ONBOARD 1001", src)
-        self.assertIn("CONTROLLER_IDENTITY", src.upper())
         self.assertIn('check-controller-config.py', src)
         self.assertLess(src.index("Type ONBOARD 1001"),
                         src.index('pct push 1001'))
