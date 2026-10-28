@@ -61,6 +61,41 @@ state/approval/executor gateway, CI and guest configuration workflows
 still require actual integration and acceptance. No additional guests
 are created by this bootstrap.
 
+### First login credentials at the very end of bootstrap
+
+A completed controller bootstrap must not leave the user searching through
+earlier package-manager or upstream installer output for a password.
+**Only after all systemd services and the local HTTPS healthcheck succeed**
+does the final guest-side step display a single terminal panel with:
+
+- actual guest HTTPS URL derived from the live `eth0` IPv4 address;
+- AnsibleForms initial username;
+- the original generated initial admin password;
+- notice about the self-signed certificate and changing the password.
+
+The initial values are read **inside CT1001** from the existing,
+root-protected `/opt/ansibleforms/app.env`. The bootstrap checks the
+file type, owner, hardlink count, permissions and exact expected variables;
+it does not print the DB password or RTE token. There is no copy of
+`app.env`, no password in a command argument, GitHub file, systemd
+journal, or host-side temporary file. Credentials are deliberately
+visible in the attended terminal, so the operator must not paste the
+final output into an issue or chat.
+
+The final panel is the **last output** of a successful bootstrap, directly
+before the first browser login. If installation/health fails, it is
+withheld. After a partial failure, `--resume` preserves the existing
+credentials and displays the same initial values once the health gates
+pass. The initial password might no longer work if it was subsequently
+changed in the WebUI; this routine does **not** reset credentials.
+
+```text
+TOBE4HOME – CONTROLLER BEREIT, JETZT ANMELDEN
+Adresse:  https://<private-guest-IP>/
+Benutzer: admin
+Passwort: <originally-generated-initial-password>
+```
+
 ### Verified clean reset of disposable CT1001
 
 For a deliberately discarded, partially installed test controller, use
