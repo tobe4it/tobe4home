@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import hashlib
 import subprocess
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ FORM = ROOT / "ansibleforms/forms/tobe4home-service-plan.yml"
 PLAY = ROOT / "ansibleforms/playbooks/tb4h-service-plan-preview.yml"
 INSTALL = ROOT / "bootstrap/install-tobe4home-planner.py"
 DEPLOY = ROOT / "bootstrap/deploy-service-planner-1001.sh"
+ORIGINAL_FORM = ROOT / "tests/fixtures/tobe4home-service-plan-v1.yml"
 spec = importlib.util.spec_from_file_location("tb4h_service_planner", INSTALL)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -32,7 +34,10 @@ class ServicePlannerTests(unittest.TestCase):
         fields = {f["name"]: f for f in form["fields"]}
         self.assertEqual(set(fields), {"service_kind", "request_text", "access_scope"})
         self.assertEqual(fields["request_text"]["type"], "textarea")
-        self.assertEqual(fields["request_text"]["maxLength"], 1600)
+        # AnsibleForms 7.4.2 forbids minLength/maxLength on a textarea.
+        self.assertFalse({"minLength", "maxLength", "regex"} & set(fields["request_text"]))
+        self.assertIn("request_text | length <= 1600", PLAY.read_text())
+        self.assertIn("request_text | length >= 15", PLAY.read_text())
         self.assertEqual({x["id"] for x in fields["service_kind"]["values"]},
                          {"paperless", "dns_filter", "proxy", "mailserver"})
 
@@ -105,6 +110,40 @@ class ServicePlannerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "operator-modified"):
                 module.install(stage, data, uid=uid, gid=gid)
             self.assertIn("operator changed", target.read_text())
+
+    def test_exact_original_form_can_upgrade_without_replacing_user_edits(self):
+        prior = ORIGINAL_FORM.read_bytes()
+        sha = hashlib.sha1(b"blob " + str(len(prior)).encode() + b"\\x00" + prior,
+                           usedforsecurity=False).hexdigest()
+        self.assertEqual(sha, "214c02698a2ea0650551317c97eee6681df62b4a")
+        self.assertTrue(module.approved_prior(FORM.name, prior))
+        self.assertFalse(module.approved_prior(PLAY.name, prior))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stage, data = root / "stage", root / "data"
+            stage.mkdir()
+            data.mkdir()
+            (data / "forms").mkdir()
+            (data / "playbooks").mkdir()
+            uid, gid = os.getuid() or 65534, os.getgid() or 65534
+            if os.geteuid() == 0:
+                for folder in (data, data / "forms", data / "playbooks"):
+                    os.chown(folder, uid, gid)
+            (stage / FORM.name).write_bytes(FORM.read_bytes())
+            (stage / PLAY.name).write_bytes(PLAY.read_bytes())
+            old_path = data / "forms" / FORM.name
+            old_path.write_bytes(prior)
+            if os.geteuid() == 0:
+                os.chown(old_path, uid, gid)
+            result = module.install(stage, data, uid=uid, gid=gid)
+            self.assertEqual(result[FORM.name], "UPDATED")
+            self.assertEqual(result[PLAY.name], "CREATED")
+            self.assertEqual(old_path.read_bytes(), FORM.read_bytes())
+            self.assertEqual(module.install(stage, data, uid=uid, gid=gid)[FORM.name],
+                             "UNCHANGED")
+            old_path.write_bytes(prior + b"\\n# site operator edit\\n")
+            with self.assertRaisesRegex(ValueError, "operator-modified"):
+                module.install(stage, data, uid=uid, gid=gid)
 
     def test_symlink_rejected_before_any_write(self):
         with tempfile.TemporaryDirectory() as tmp:
