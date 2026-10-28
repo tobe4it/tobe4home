@@ -89,6 +89,8 @@ IP="$(pct exec 1001 -- ip -4 -o addr show dev eth0 |
   awk '{split($4,a,"/");if(a[1]!=""){print a[1];exit}}')"
 [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
   die "Cannot determine CT1001 IPv4"
+echo "TOBE4HOME_PLANNER_ASSETS_READY=YES"
+echo "FORM_REGISTRATION_CHECK=BROWSER_TEST_REQUIRED"
 echo "TOBE4HOME_PLANNER_READY=YES"
 printf 'PLANER=https://%s/form/tobe4home-dienstplanung\n' "$IP"
 echo "MODE=PREVIEW_ONLY"
