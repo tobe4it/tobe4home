@@ -33,75 +33,47 @@ The automated validation workflow currently checks Python contracts and bilingua
 English and German setup and operations documentation is available under `docs/` and `docs/handbook/`. A newcomer path starts with infrastructure prerequisites and basic security; advanced integrations are optional.
 
 
-## Guided installation (experimental)
+## Installation status: single-controller bootstrap in development
 
-**Start from an existing Proxmox VE host** with root shell access, Git,
-an SSH public key whose private counterpart is on your admin workstation,
-and a functioning network.
+**No new installation is currently enabled.** The earlier Stage-0 wizard
+created a separate `*-setup` LXC, then required a second Ansible LXC.
+That design is obsolete and conflicts with the accepted
+[Single-Controller architecture](docs/ADR-001-SINGLE-CONTROLLER.md).
 
-For the **unmerged development prototype only** (PR #1), the single entry
-command is:
+The new installer will collect only initial Proxmox options in its host
+terminal menu and create **one** permanent controller LXC, normally
+CT 1001, with [AnsibleForms](docs/ADR-002-ANSIBLEFORMS-UI.md)
+and an Ansible/OpenTofu runtime. That controller will discover
+infrastructure, show a reviewable plan, obtain explicit approval and
+install only approved additional guests.
+
+Until this controller bootstrap and its end-to-end Proxmox acceptance
+tests are implemented, **`bootstrap/launch.sh` intentionally exits with
+code 3 and prints an explicit not-ready message before any write**.
+Do not use `bootstrap/installer-tui.sh` or
+`bootstrap/bootstrap.sh --apply` to bypass the restriction: these
+are the deprecated two-container prototype, retained for regression tests.
+
+The repository already contains a non-mutating
+[development preview and integration guide](docs/CONTROLLER-INTEGRATION.md)
+for the read-only Proxmox inventory exporter, deterministic planner,
+HTML topology, synthetic AnsibleForms wizard and OpenTofu HCL preview.
+**Neither AnsibleForms nor OpenTofu is yet installed by this branch.**
+The generated OpenTofu configuration does not call `apply`.
+
+The former test guests CT 1000 and CT 1001 were explicitly removed from
+the test Proxmox host on 28 October 2026; they must not be assumed present
+by any later migration or installation scripts.
+
+### Source checkout for review (no installation)
 
 ```bash
-git clone --depth 1 --branch feat/bootstrap-setup-wizard-20261027 https://github.com/tobe4it/tobe4home.git /root/tobe4home-bootstrap && bash /root/tobe4home-bootstrap/bootstrap/launch.sh
+git -C /root/tobe4home-bootstrap pull --ff-only
+bash /root/tobe4home-bootstrap/bootstrap/launch.sh
+# Expected while not ready: explicit diagnostic and exit code 3.
 ```
 
-This clones version-controlled installer files and starts a guided host-side
-session. Admin SSH public keys are discovered automatically from the original
-sudo user's and Proxmox root's SSH login authorizations; the operator selects
-a fingerprint instead of manually creating a public-key file. Keys with
-restrictive authorized_keys options are skipped, and a public-key paste
-option remains available if no existing login key is suitable.
-When `whiptail` is already installed on Proxmox, the installer opens
-a **Debian-style text-mode setup interface** (dialog boxes and selection menus).
-Otherwise it uses a simple command-line fallback without installing packages
-on the host. To enable dialogs explicitly on Proxmox, first review and install
-the optional host package `whiptail` with `apt install whiptail`, then run
-`bash /root/tobe4home-bootstrap/bootstrap/launch.sh` again.
-To force the fallback, set `TOBE4HOME_INSTALLER_UI=text`.
-An invalid underscore in the host prefix (e.g. `tb4h_`) prompts a validated
-replacement suggestion (`tb4h-`), rather than aborting the entire setup. It proposes an unused VMID (preferably 1000), editable hostname
-prefix, rootfs storage, bridge/VLAN and a public SSH key. It detects the Rocky
-Linux 10 system template, prints a **read-only plan**, and creates a single
-unprivileged setup LXC **only after** the explicit `INSTALL <VMID>` approval.
-It does not perform a `curl | bash` remote-code execution.
+The development branch is mutable. Wait for a tagged and verified installer
+release before using any host-root provisioning command. No site-private
+values or credentials may be committed to the public repository.
 
-**Security:** This is not a released installer. Review the code and the exact
-Git commit before running it as root; the development branch is mutable.
-Do not execute on production until the Proxmox acceptance tests in PR #1
-have passed. After review and release, the entry command will be switched
-to a pinned, verified stable release (not a moving feature branch).
-If `/root/tobe4home-bootstrap` already exists, do not overwrite it:
-review it and run `bash /root/tobe4home-bootstrap/bootstrap/launch.sh`.
-
-The installation entry point starts **on a prepared Proxmox VE host**:
-a preflighted script creates a dedicated, unprivileged Rocky Linux 10 LXC.
-After health checks, it shows the guest's actual IPv4 address plus its
-internal **HTTPS URL** (`https://<guest-IP>:8765/`), bootstrap username,
-strong random setup code and self-signed certificate SHA256 fingerprint.
-The wizard is directly accessible from the selected internal network,
-subject to site firewall/routing policy; **no SSH tunnel is required**.
-Its temporary certificate must be verified and replaced with a trusted
-internal certificate. The wizard currently records an installation draft, discovers facts
-from its own guest, and can export an **optional** local recovery starter.
-It **does not yet provision** the essential Ansible/Git/Coding-Agent
-infrastructure or execute prompt-derived Ansible deployments. This is the
-next critical implementation, not a mandatory recovery-export step.
-Production deployments require independent approval.
-
-The first Proxmox Realtest exposed a probable `umask 077` / uid-mapped
-rootfs traversal issue; `pct create` now runs with isolated `umask 022`
-while secret files retain restrictive permissions. The rootfs access fix
-and direct LAN connectivity are not yet verified on the user's host.
-
-**New development preview (27 Oct 2026):** a deterministic site/Proxmox
-inventory planner, an offline topology HTML report, a generated OpenTofu
-configuration and a two-step AnsibleForms wizard prototype have been added
-in the feature branch. They are tested using synthetic inventory data.
-**Neither AnsibleForms nor OpenTofu is installed on CT 1001 by these commits,
-and no new guests are deployed.** Follow the
-[Controller integration and review guide](docs/CONTROLLER-INTEGRATION.md)
-for read-only preview commands and pending real-installation gates.
-
-See [guided bootstrap and installation gates](docs/BOOTSTRAP.md) and
-the [prompt-driven installation orchestrator architecture](docs/INSTALLATION-ORCHESTRATOR.md).
