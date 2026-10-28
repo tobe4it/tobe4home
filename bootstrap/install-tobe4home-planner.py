@@ -6,6 +6,7 @@ Fail closed on symlinks, hardlinks, modified files, or unexpected ownership.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import pwd
@@ -19,6 +20,20 @@ FILES = {
     "tobe4home-service-plan.yml": "forms",
     "tb4h-service-plan-preview.yml": "playbooks",
 }
+# The exact initial form published before the AnsibleForms 7.4.2 textarea
+# schema compatibility repair. No arbitrary existing file is upgradeable.
+APPROVED_PRIOR_GIT_BLOBS = {
+    "tobe4home-service-plan.yml": frozenset({
+        "214c02698a2ea0650551317c97eee6681df62b4a",
+    }),
+}
+
+
+def approved_prior(filename: str, content: bytes) -> bool:
+    git_blob = b"blob " + str(len(content)).encode("ascii") + b"\x00" + content
+    digest = hashlib.sha1(git_blob, usedforsecurity=False).hexdigest()
+    return digest in APPROVED_PRIOR_GIT_BLOBS.get(filename, frozenset())
+
 
 
 def checked_dir(path: Path, allowed_owner: set[int]) -> None:
@@ -60,22 +75,22 @@ def install(stage: Path = STAGE, data: Path = DATA, uid: int | None = None,
         raise ValueError("Refusing privileged AnsibleForms target owner")
     checked_dir(stage, {0, os.geteuid()})
     checked_dir(data, {uid})
-    planned: list[tuple[Path, bytes, bool]] = []
+    planned: list[tuple[Path, bytes, bytes | None]] = []
     for filename, folder in FILES.items():
         destination = data / folder
         checked_dir(destination, {0, uid})
         target = destination / filename
         incoming = checked_file(stage / filename, {0, os.geteuid()})
-        exists = target.exists() or target.is_symlink()
-        if exists:
+        old = None
+        if target.exists() or target.is_symlink():
             old = checked_file(target, {uid})
-            if old != incoming:
+            if old != incoming and not approved_prior(filename, old):
                 raise ValueError("Refusing operator-modified asset: " + filename)
-        planned.append((target, incoming, exists))
+        planned.append((target, incoming, old))
 
     results: dict[str, str] = {}
-    for target, incoming, exists in planned:
-        if exists:
+    for target, incoming, old in planned:
+        if old == incoming:
             # A concurrent operator change must never be silently overwritten.
             if checked_file(target, {uid}) != incoming:
                 raise ValueError("Concurrent modification: " + target.name)
@@ -91,12 +106,22 @@ def install(stage: Path = STAGE, data: Path = DATA, uid: int | None = None,
                 writer.write(incoming)
                 writer.flush()
                 os.fsync(writer.fileno())
-            if target.exists() or target.is_symlink():
-                raise ValueError("Destination appeared while installing: " + target.name)
-            # Exclusive hardlink creation refuses any target that appears
-            # between preflight and commit (os.replace would overwrite it).
-            os.link(temp, target, follow_symlinks=False)
-            results[target.name] = "CREATED"
+            if old is None:
+                if target.exists() or target.is_symlink():
+                    raise ValueError("Destination appeared while installing: " + target.name)
+                # Exclusive creation refuses a newly appearing target.
+                os.link(temp, target, follow_symlinks=False)
+                results[target.name] = "CREATED"
+            else:
+                # Only our EXACT previously published Git blob may be replaced.
+                # Refuse even the smallest operator edit, and re-check immediately
+                # before atomic replacement in the same directory.
+                if not approved_prior(target.name, old):
+                    raise ValueError("Unapproved predecessor: " + target.name)
+                if checked_file(target, {uid}) != old:
+                    raise ValueError("Concurrent modification: " + target.name)
+                os.replace(temp, target)
+                results[target.name] = "UPDATED"
         finally:
             if fd >= 0:
                 os.close(fd)
