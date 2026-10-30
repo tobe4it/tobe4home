@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tobe4home · Chat</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<main class="shell">
+<header class="mast">
+  <div class="eyebrow">tobe4home · Experimenteller Chat-MVP</div>
+  <h1>Was soll dein Heimserver für dich tun?</h1>
+  <p>Beschreibe einen Dienst in deinen eigenen Worten. Ich helfe bei der Planung; ausgeführt wird nichts.</p>
+  <div id="state" role="status" class="status">Modellverbindung wird geprüft …</div>
+</header>
+<section aria-label="Chatverlauf" id="messages" aria-live="polite" class="messages">
+  <article class="message assistant">
+    <strong>tobe4home</strong>
+    <p>Beispiele: „Richte Paperless für die Familie ein“, „Ich möchte einen DNS-Filter“, „Wir brauchen einen filternden Proxy“ oder „Plane einen Mailserver“. Kein Dienst wird eingerichtet, bevor Prüfungen und eine spätere, separate Freigabe möglich sind.</p>
+  </article>
+</section>
+<form id="chat-form">
+  <label for="prompt">Dein Auftrag</label>
+  <textarea id="prompt" rows="3" maxlength="1600" required placeholder="Beschreibe den gewünschten Dienst …"></textarea>
+  <div class="actions"><span id="counter">0 / 1600</span><button type="submit" id="send" disabled>Nachricht senden</button></div>
+</form>
+<footer>🔒 Nur über einen authentifizierten SSH-Tunnel erreichbar · Keine Proxmox-Befehle · Keine Installation · Kein serverseitiger Chatverlauf · Keine Zugangsdaten eingeben</footer>
+</main>
+</body>
+</html>

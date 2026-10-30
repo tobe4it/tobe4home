@@ -26,8 +26,79 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install 'ansible-core>=2.18,<2.20' 'pytest>=8,<10' 'PyYAML>=6,<7' 'Jinja2>=3,<4' 'reportlab>=4,<5'
 
+      - name: Bootstrap shell syntax
+        run: |
+          bash -n bootstrap/bootstrap.sh
+          bash -n bootstrap/launch.sh
+          bash -n bootstrap/single-controller.sh
+          bash -n bootstrap/reset-controller.sh
+          bash -n bootstrap/install-ansibleforms-native.sh
+          bash -n bootstrap/build-native-installer.sh
+          bash -n bootstrap/installer-tui.sh
+          bash -n bootstrap/deploy-service-planner-1001.sh
+
       - name: Python regression tests
         run: python -m pytest -q tests
 
+      - name: AnsibleForms preview playbook syntax
+        run: ansible-playbook -i localhost, ansibleforms/playbooks/tb4h-preview.yml --syntax-check
+
+      - name: Run AnsibleForms preview end-to-end against synthetic inventory
+        run: |
+          ansible-playbook -i localhost, ansibleforms/playbooks/tb4h-preview.yml \
+            -e '{"git":"new","agent":"new","model":"existing","ci":"new"}'
+
+      - name: Validate service-planner playbook syntax
+        run: ansible-playbook -i localhost, ansibleforms/playbooks/tb4h-service-plan-preview.yml --syntax-check
+
+      - name: Exercise inert service-planner RTE workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$(mktemp -d)"
+          trap 'rm -rf -- "$work"' EXIT
+          cp ansibleforms/playbooks/tb4h-service-plan-preview.yml "$work/"
+          echo '{"schema":1,"source":"proxmox-host-readonly","collected_at_utc":"2026-10-28T18:00:00+00:00","lxc":{"total":2,"running":1},"qemu":{"total":0,"running":0}}' > "$work/tb4h-proxmox-snapshot.json"
+          ansible-playbook -i localhost, "$work/tb4h-service-plan-preview.yml" -e '{"service_kind":"dns_filter","request_text":"Ein lokaler DNS-Filter mit Listenpflege ohne externe Anmeldung","access_scope":"nur_zuhause"}' | tee "$work/result.log"
+          grep -q 'changed=0' "$work/result.log"
+          grep -q 'LLM-Anbindung' "$work/result.log" || grep -q 'NICHT ANGEBUNDEN' "$work/result.log"
+
       - name: Bilingual handbook and blank recovery PDFs
         run: python scripts/check_handbook.py
+
+  native-installer-source-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout tobe4home
+        uses: actions/checkout@v4
+
+      - name: Set up pinned Go compiler
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          check-latest: false
+
+      - name: Build exact audited AnsibleForms source with Node version override
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          temp="$(mktemp -d)"
+          trap 'rm -rf -- "$temp"' EXIT
+          git init -q "$temp/upstream"
+          git -C "$temp/upstream" remote add origin https://github.com/ansibleforms/installer.git
+          git -C "$temp/upstream" fetch -q --depth 1 origin refs/tags/v7.4.2
+          git -C "$temp/upstream" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$temp/upstream" rev-parse HEAD)" = 'ae60b31742ee5bd6956f9bf9798fd5b5356ccf42'
+          python3 bootstrap/patch-node-pin.py "$temp/upstream/internal/native/native.go"
+          (
+            cd "$temp/upstream"
+            export GOTOOLCHAIN=go1.27.2
+            export GOSUMDB=sum.golang.org
+            export GOPROXY=https://proxy.golang.org
+            export GOFLAGS=-mod=readonly
+            test "$(go env GOVERSION)" = 'go1.27.2'
+            go build -trimpath -buildvcs=false -o "$temp/ansibleforms-installer" .
+          )
+          test -s "$temp/ansibleforms-installer"
+          "$temp/ansibleforms-installer" --help >/dev/null

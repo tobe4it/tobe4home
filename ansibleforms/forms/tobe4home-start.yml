@@ -1,0 +1,102 @@
+# tobe4home-first-run; automatically seeded into AnsibleForms 7 forms folder.
+# Phase 0 onboarding ONLY: no Proxmox credentials or write operations.
+- name: "tobe4home Start"
+  type: ansible
+  roles:
+    - default
+  categories:
+    - Default
+  description: "Ihr eigener Heimserver – einfach und Schritt für Schritt einrichten."
+  icon: house
+  showHelp: true
+  help: |
+    # Willkommen bei tobe4home
+
+    Sie benötigen keine Erfahrung mit Ansible oder Linux.
+
+    Proxmox ist bereits die geprüfte Grundlage dieses Bootstrap-Verfahrens.
+    Vorhandene virtuelle Maschinen und Container werden lesend vom
+    Proxmox-Host erfasst. Sie müssen darüber keine Angaben machen.
+    Danach klären wir, was Sie mit Ihrem Heimserver erreichen möchten.
+    Die folgenden Fragen erstellen **nur eine unverbindliche Übersicht**.
+    Es werden keine Server, Benutzer oder Dienste verändert.
+
+    **Entwicklungsstand:** Die automatische Einrichtung und Freigabe neuer
+    Dienste ist noch nicht implementiert. Die Installation von AnsibleForms
+    allein ist noch keine fertige tobe4home-Umgebung.
+  playbook: tb4h-onboarding-preview.yml
+  wizard:
+    - subform: tb4h_start_goals
+      title: "1 · Ihre Ziele"
+    - subform: tb4h_start_protection
+      title: "2 · Schutz und Zugang"
+- name: tb4h_start_goals
+  type: subform
+  description: "Was soll Ihr Heimserver für Sie erledigen?"
+  fields:
+    - name: home_goal
+      type: enum
+      label: "Wobei soll tobe4home zuerst helfen?"
+      values:
+        - id: familie
+          text: "Dateien, Dokumente und Familienwissen"
+        - id: smart_home
+          text: "Das Zuhause automatisieren"
+        - id: beides
+          text: "Beides miteinander verbinden"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
+      default: familie
+      required: true
+      help: "familie = Dateien, Dokumente und gemeinsames Wissen; smart_home = Hausautomation; beides = Kombination"
+    - name: experience
+      type: enum
+      label: "Wie viel Erfahrung haben Sie mit Heimservern?"
+      values:
+        - id: einsteiger
+          text: "Ich beginne gerade"
+        - id: etwas_erfahrung
+          text: "Ich habe erste Erfahrungen"
+        - id: erfahren
+          text: "Ich betreibe bereits Heimserver"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
+      default: einsteiger
+      required: true
+- name: tb4h_start_protection
+  type: subform
+  description: "Datensicherung und privater Zugriff sind Grundlage der Planung."
+  fields:
+    - name: backup_available
+      type: enum
+      label: "Gibt es bereits eine Datensicherung außerhalb des Servers?"
+      values:
+        - id: ja
+          text: "Ja"
+        - id: nein
+          text: "Nein"
+        - id: weiss_nicht
+          text: "Ich weiß es nicht"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
+      default: weiss_nicht
+      required: true
+    - name: access_scope
+      type: enum
+      label: "Von wo aus sollen Ihre Dienste später erreichbar sein?"
+      values:
+        - id: nur_zuhause
+          text: "Nur von zu Hause"
+        - id: auch_unterwegs
+          text: "Auch unterwegs"
+        - id: weiss_nicht
+          text: "Das möchte ich später entscheiden"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
+      default: nur_zuhause
+      required: true
+      help: "Öffentlicher Zugriff wird nicht automatisch eingerichtet."

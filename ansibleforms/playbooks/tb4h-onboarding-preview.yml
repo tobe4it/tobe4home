@@ -1,0 +1,76 @@
+---
+# Read-only onboarding for novice tobe4home users. No installer side effects.
+# Uses only a snapshot collected read-only ON THE PVE HOST; no guest PVE access.
+# This is NOT live service scanning, provisioning or a persistence layer.
+- name: tobe4home – unverbindlicher Erstüberblick
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # In RTE_FILES=transfer, AnsibleForms runs inside a job-local playbook
+    # directory. An absolute native-install path does NOT exist there.
+    tb4h_inventory_path: "{{ playbook_dir }}/tb4h-proxmox-snapshot.json"
+  tasks:
+    - name: Prüfen, dass nur die vorgesehenen Antworten übergeben wurden
+      ansible.builtin.assert:
+        that:
+          - home_goal in ['familie', 'smart_home', 'beides']
+          - experience in ['einsteiger', 'etwas_erfahrung', 'erfahren']
+          - backup_available in ['ja', 'nein', 'weiss_nicht']
+          - access_scope in ['nur_zuhause', 'auch_unterwegs', 'weiss_nicht']
+        fail_msg: "Bitte die Ersteinrichtung mit den angebotenen Antworten ausfüllen."
+      changed_when: false
+
+    - name: Nach übertragener Proxmox-Bestandsaufnahme suchen
+      ansible.builtin.stat:
+        path: "{{ tb4h_inventory_path }}"
+      register: tb4h_inventory_file
+      changed_when: false
+
+    - name: Fehlende Bestandsaufnahme klar melden
+      ansible.builtin.assert:
+        that:
+          - tb4h_inventory_file.stat.exists | default(false)
+          - tb4h_inventory_file.stat.isreg | default(false)
+        fail_msg: >-
+          Die Proxmox-Bestandsaufnahme fehlt im AnsibleForms-RTE.
+          Auf dem Proxmox-Host das kontrollierte Skript
+          bootstrap/deploy-onboarding-1001.sh --apply erneut ausführen.
+          CT1001 nicht neu installieren. Keine Gäste wurden verändert.
+      changed_when: false
+
+    - name: Übertragene Bestandsaufnahme laden und begrenzt überprüfen
+      ansible.builtin.set_fact:
+        tb4h_inventory: "{{ lookup('ansible.builtin.file', tb4h_inventory_path) | from_json }}"
+      changed_when: false
+
+    - name: Herkunft und Integrität der Bestandsaufnahme prüfen
+      ansible.builtin.assert:
+        that:
+          - tb4h_inventory.schema | int == 1
+          - tb4h_inventory.source == 'proxmox-host-readonly'
+          - tb4h_inventory.lxc.total | int >= tb4h_inventory.lxc.running | int
+          - tb4h_inventory.qemu.total | int >= tb4h_inventory.qemu.running | int
+          - tb4h_inventory.collected_at_utc is defined
+        fail_msg: "Die übertragene Bestandsaufnahme ist nicht plausibel. Keine Installation."
+      changed_when: false
+
+    - name: Persönliche Übersicht erstellen – ohne Änderungen am Heimserver
+      ansible.builtin.debug:
+        msg:
+          status: "VORSCHAU – KEINE INSTALLATION AUSGEFÜHRT"
+          ihr_ziel: "{{ home_goal }}"
+          ihre_erfahrung: "{{ experience }}"
+          proxmox_basis: "Bootstrap auf einem geprüften Proxmox-Host"
+          bestand_lxc: "{{ tb4h_inventory.lxc }}"
+          bestand_vm: "{{ tb4h_inventory.qemu }}"
+          bestandsaufnahme_zeitpunkt: "{{ tb4h_inventory.collected_at_utc }}"
+          erkennungsumfang: "LXC und VMs, ohne CT1001; Anwendungen innerhalb der Gäste noch nicht geprüft"
+          externe_datensicherung: "{{ backup_available }}"
+          gewünschter_zugriff: "{{ access_scope }}"
+          naechster_schritt: >-
+            Dies ist eine automatische Momentaufnahme der vorhandenen Proxmox-Gäste.
+            Die Erkennung konkreter Anwendungen, der Installationsplan und die
+            explizite Deployment-Freigabe sind noch in Entwicklung.
+            Keine Gäste oder Dienste wurden verändert.
+      changed_when: false

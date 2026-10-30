@@ -1,0 +1,52 @@
+# Prototype AnsibleForms 7 wizard: PREVIEW ONLY, synthetic inventory.
+# This does not have Proxmox credentials and does not provision guests.
+- name: "tobe4home – Infrastrukturplanung (Testvorschau)"
+  type: ansible
+  roles:
+    - default
+  # Uses the mandatory Default category; avoid overwriting local config.yaml.
+  description: "Benötigte Infrastruktur-Gäste aus einem Inventar ableiten."
+  help: |
+    **Testformular ohne Proxmox-Schreibzugriff.**
+    Die vorliegende Entwicklungsfassung benutzt ein synthetisches Inventar
+    mit reservierten Beispieldaten. Sie installiert keine weiteren LXCs.
+    Ein späterer freigegebener Workflow wird die reale, unabhängig gelesene
+    Bestandsaufnahme und die OpenTofu-Planfreigabe nutzen.
+  showHelp: true
+  icon: diagram-project
+  playbook: tb4h-preview.yml
+  wizard:
+    - subform: tb4h_services
+      title: "Basisdienste"
+    - subform: tb4h_runner
+      title: "Ausführungsumgebung"
+- name: tb4h_services
+  type: subform
+  fields:
+    - name: git
+      type: enum
+      label: "Git / Forgejo"
+      values: [new, existing]
+      default: new
+      required: true
+    - name: agent
+      type: enum
+      label: "Isolierter Coding-Agent"
+      values: [new, existing]
+      default: new
+      required: true
+    - name: model
+      type: enum
+      label: "KI-Modell-Endpunkt"
+      values: [new, existing]
+      default: existing
+      required: true
+- name: tb4h_runner
+  type: subform
+  fields:
+    - name: ci
+      type: enum
+      label: "Separater CI-Runner"
+      values: [new, existing, omit]
+      default: new
+      required: true

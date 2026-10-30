@@ -1,0 +1,6 @@
+{
+  "git": "new",
+  "agent": "new",
+  "model": "existing",
+  "ci": "new"
+}

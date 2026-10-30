@@ -1,0 +1,60 @@
+---
+# Stage-1 demonstration only: input wizard -> deterministic offline planner.
+# No privileged modules, no shell, no Proxmox API, no OpenTofu apply.
+- name: Read-only infrastructure preview (synthetic lab inventory)
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  vars:
+    tb4h_repo_root: "{{ playbook_dir }}/../.."
+    tb4h_examples: "{{ tb4h_repo_root }}/examples/infra-preview"
+    tb4h_planner: "{{ tb4h_repo_root }}/bootstrap/infra_planner.py"
+  tasks:
+    - name: Validate allowed service choices supplied by the form
+      ansible.builtin.assert:
+        that:
+          - git in ['new', 'existing']
+          - agent in ['new', 'existing']
+          - model in ['new', 'existing']
+          - ci in ['new', 'existing', 'omit']
+        fail_msg: "Invalid infrastructure wizard selection"
+
+    - name: Create temporary choices file for planner
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .json
+      register: tb4h_choices_temp
+      changed_when: false
+
+    - name: Compute preview and remove temporary choices file
+      block:
+        - name: Store bounded nonsecret service mode selection
+          ansible.builtin.copy:
+            dest: "{{ tb4h_choices_temp.path }}"
+            mode: "0600"
+            content: "{{ {'git': git, 'agent': agent, 'model': model, 'ci': ci} | to_nice_json }}"
+          changed_when: false
+
+        - name: Compile infrastructure plan without modifying Proxmox
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ tb4h_planner }}"
+              - --site
+              - "{{ tb4h_examples }}/site.example.json"
+              - --choices
+              - "{{ tb4h_choices_temp.path }}"
+              - --inventory
+              - "{{ tb4h_examples }}/inventory.example.json"
+          register: tb4h_preview
+          changed_when: false
+
+        - name: Report deterministic preview and immutable plan fingerprint
+          ansible.builtin.debug:
+            msg: "{{ tb4h_preview.stdout | from_json }}"
+      always:
+        - name: Remove temporary input file
+          ansible.builtin.file:
+            path: "{{ tb4h_choices_temp.path }}"
+            state: absent
+          changed_when: false

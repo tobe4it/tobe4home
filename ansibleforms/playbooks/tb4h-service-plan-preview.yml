@@ -1,0 +1,94 @@
+---
+# Strictly local RTE planning demonstration. User text is untrusted and
+# never interpreted as Jinja, shell, Ansible task data, host or file path.
+- name: tobe4home – neuer Dienst (gesperrte Planungsvorschau)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    tb4h_inventory_path: "{{ playbook_dir }}/tb4h-proxmox-snapshot.json"
+    tb4h_profiles:
+      paperless:
+        title: "Dokumentenverwaltung"
+        reference: "Paperless-Profil ist noch nicht als freigegebene Rolle eingebunden"
+      dns_filter:
+        title: "DNS-Filter"
+        reference: "Quellbaustein ansible/roles/pihole – nicht live eingebunden"
+      proxy:
+        title: "Filternder Proxy"
+        reference: "Quellbaustein ansible/roles/nginx_reverse_proxy – nicht live eingebunden"
+      mailserver:
+        title: "Mailserver"
+        reference: "Quellbaustein ansible/roles/mail_backend – nicht live eingebunden"
+  tasks:
+    - name: Freitextauftrag und Dienstprofil begrenzt validieren
+      ansible.builtin.assert:
+        that:
+          - service_kind is string
+          - service_kind in ['paperless', 'dns_filter', 'proxy', 'mailserver']
+          - request_text is string
+          - request_text | length >= 15
+          - request_text | length <= 1600
+          - access_scope is string
+          - access_scope in ['nur_zuhause', 'via_vpn', 'auch_internet']
+        fail_msg: "Ungültiger oder zu langer Auftrag. Kein Playbook erzeugt."
+      changed_when: false
+
+    - name: Nur auf den übertragenen anonymisierten Bestandsstand zugreifen
+      ansible.builtin.stat:
+        path: "{{ tb4h_inventory_path }}"
+      register: tb4h_file
+      changed_when: false
+
+    - name: Fehlende Bestandsaufnahme zurückweisen
+      ansible.builtin.assert:
+        that:
+          - tb4h_file.stat.exists | default(false)
+          - tb4h_file.stat.isreg | default(false)
+        fail_msg: "Bestandsaufnahme fehlt. Zuerst das freigegebene Onboarding erneut durchführen."
+      changed_when: false
+
+    - name: Bestandsaufnahme nur lesend einlesen
+      ansible.builtin.set_fact:
+        tb4h_inventory: "{{ lookup('ansible.builtin.file', tb4h_inventory_path) | from_json }}"
+      changed_when: false
+
+    - name: Struktur und Herkunft der Bestandsaufnahme plausibilisieren
+      ansible.builtin.assert:
+        that:
+          - tb4h_inventory.schema | int == 1
+          - tb4h_inventory.source == 'proxmox-host-readonly'
+          - tb4h_inventory.lxc.total | int >= tb4h_inventory.lxc.running | int
+          - tb4h_inventory.qemu.total | int >= tb4h_inventory.qemu.running | int
+          - tb4h_inventory.collected_at_utc is defined
+        fail_msg: "Bestandsaufnahme unvollständig oder unplausibel."
+      changed_when: false
+
+    - name: Gesperrten Entwurf anzeigen – ohne Auftragstext zu protokollieren
+      ansible.builtin.debug:
+        msg:
+          status: "ENTWURF – KEINE BEREITSTELLUNG"
+          dienst: "{{ tb4h_profiles[service_kind].title }}"
+          referenz: "{{ tb4h_profiles[service_kind].reference }}"
+          auftrags_sha256: "{{ request_text | hash('sha256') }}"
+          zugriff: "{{ access_scope }}"
+          vorhandene_lxc: "{{ tb4h_inventory.lxc }}"
+          vorhandene_vm: "{{ tb4h_inventory.qemu }}"
+          inventar_zeitpunkt: "{{ tb4h_inventory.collected_at_utc }}"
+          bestandsgrenze: "Keine Diensterkennung innerhalb bestehender LXC/VMs"
+          llm_status: "NICHT ANGEBUNDEN – Freitext wird nicht von einer KI interpretiert"
+          bereitstellungsstatus: "BLOCKIERT – keine Zielhosts, Zugangsdaten oder Ausführungsfreigabe"
+          ansible_vorlage: |
+            ---
+            - name: tobe4home - {{ tb4h_profiles[service_kind].title }} (gesperrter Entwurf)
+              hosts: tb4h_UNASSIGNED
+              gather_facts: false
+              tasks:
+                - name: Bereitstellung bis zur technischen Prüfung stoppen
+                  ansible.builtin.fail:
+                    msg: "Nicht ausführen: Rollen-, Host-, Backup- und Sicherheitsprüfung fehlen"
+          naechster_schritt: >-
+            LLM-Anbindung, echte Diensterkennung, versioniertes generiertes
+            Playbook, unabhängige Tests und ausdrückliche Deploy-Freigabe
+            sind weitere Entwicklungsphasen.
+      changed_when: false

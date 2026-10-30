@@ -1,0 +1,64 @@
+# tobe4home service request – free-text intake, no model or deployment.
+- name: "tobe4home Dienstplanung"
+  type: ansible
+  roles:
+    - default
+  categories:
+    - Default
+  description: "Beschreiben Sie den gewünschten Dienst; erhalten Sie eine sichere Planungsvorschau."
+  icon: list-check
+  showHelp: true
+  help: |
+    # Neuen Dienst planen
+    Beschreiben Sie in eigenen Worten, was eingerichtet werden soll.
+    Dieser Entwicklungsstand ist **noch kein KI-Chat**: Eine LLM-Anbindung,
+    Git-Branch-Erstellung und die automatische Playbook-Generierung stehen aus.
+    Die Vorschau ordnet Ihre Auswahl einer vorhandenen Dienstfamilie zu,
+    prüft die anonymisierte Proxmox-Bestandsaufnahme und erstellt nur eine
+    **gesperrte, ausdrücklich nicht ausführbare Ansible-Vorlage**.
+    Keine Container, Datenbanken, DNS-/Mail-Einträge oder Dienste werden verändert.
+    **Keine Kennwörter, Tokens, privaten IP-Adressen oder Personendaten eingeben.**
+  playbook: tb4h-service-plan-preview.yml
+  allowJinjaInExtravars: false
+  allowRelaunch: false
+  fields:
+    - name: service_kind
+      type: enum
+      label: "Welchen Dienst möchten Sie planen?"
+      required: true
+      values:
+        - id: paperless
+          text: "Dokumentenverwaltung (Paperless)"
+        - id: dns_filter
+          text: "Werbe- und Tracking-Schutz (DNS-Filter)"
+        - id: proxy
+          text: "Filternder Web-/Reverse-Proxy"
+        - id: mailserver
+          text: "Eigener Mailserver"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
+      default: paperless
+    - name: request_text
+      type: textarea
+      label: "Ihr Auftrag in eigenen Worten"
+      placeholder: "Ich möchte einen Dokumentenserver für unsere Familie mit OCR und getrennten Zugriffsrechten planen."
+      help: "Nur Anforderungen beschreiben; keine Zugangsdaten oder internen Adressen."
+      # Limits (15..1600) are enforced by the read-only RTE assertions.
+      # AnsibleForms 7.4.2 textarea schema forbids minLength/maxLength.
+      required: true
+    - name: access_scope
+      type: enum
+      label: "Geplanter Zugriff"
+      required: true
+      values:
+        - id: nur_zuhause
+          text: "Nur im Heimnetz"
+        - id: via_vpn
+          text: "Zu Hause und über VPN"
+        - id: auch_internet
+          text: "Auch aus dem Internet – Sicherheitsprüfung erforderlich"
+      valueColumn: id
+      previewColumn: text
+      columns: [text]
+      default: nur_zuhause

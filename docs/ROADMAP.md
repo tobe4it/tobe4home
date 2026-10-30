@@ -208,3 +208,21 @@ Future candidates:
 - Multi-node deployments
 - CI/CD
 - Automated testing
+
+---
+
+# Guided bootstrap and AI-assisted self-installation (prototype)
+
+- Stage 0: reviewed Proxmox shell bootstrap, isolated RHEL-compatible setup LXC,
+  localhost-only web wizard, no production writes from the wizard.
+- Stage 1: independent offline recovery copy, Ansible controller, inventory,
+  encrypted site secrets and independent backups with successful restore test.
+- Stage 2: internally hosted Forgejo LTS, protected branches and isolated CI.
+- Stage 3: central identity, TLS, least-privilege user delegation and security tests.
+- Stage 4: local coding LLM, sandboxed coding agents, explicit approval gateway.
+- Stage 5: Langflow/MCP as optional GUI-based orchestration, service blueprints.
+- Stage 6: idempotent staged deployments with lifecycle, rollback and recovery.
+
+Policy: no unsupported LTS releases, prefer RHEL-compatible guests,
+Podman/Quadlet over Docker, and keep Git/Ansible as the deterministic authority.
+See [BOOTSTRAP.md](BOOTSTRAP.md) for the actual stage-0 limitations.
