@@ -121,7 +121,17 @@ read-only hostseitige Proxmox-Gastzählung, Transfer in den RTE,
 Vorschau-Playbook mit `ok=6 changed=0 failed=0`
 (28.10.2026, 21 LXC ohne Controller, 0 VMs).
 
-**Nicht implementiert:** primäre Chat-App und LLM-Anbindung,
+**Implementierter Entwicklungsprototyp (noch nicht live abgenommen):**
+separater `chat/`-Dienst mit deutschsprachiger Chatoberfläche,
+OpenAI-kompatibler LLM-API und sicherem SSH-Tunnel-Zugang auf CT1001;
+kontrollierte Nachrüstung über
+[`deploy-chat-mvp-1001.sh`](../bootstrap/deploy-chat-mvp-1001.sh).
+Die Modelladresse ist standardmäßig nicht konfiguriert. Die
+Anbindung an die bisherige AnsibleForms-Anmeldung sowie ein
+vollständiger Chat-first-Neu-Bootstrap sind noch nicht implementiert.
+
+**Nicht implementiert:** eine voll integrierte, produktive Chat-App mit
+AnsibleForms-/OIDC-Anmeldung,
 standortspezifische Bestandsaufnahme aus CT1001 über eine eingeschränkte
 Proxmox-API, KI-gestützte Codegenerierung, Git-/CI-Gate, Planfreigabe,
 Proxmox-Schreibberechtigungen, eigentliche Gast- und Dienstbereitstellung.
