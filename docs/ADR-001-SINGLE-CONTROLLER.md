@@ -7,6 +7,16 @@ is the accepted frontend for this controller. A small deterministic
 Proxmox-topology planner remains our own backend; AnsibleForms supplies
 forms, workflow approval and job output. No dedicated custom full UI.
 
+> **Current implementation note (30 October 2026).** The architecture has
+> been reduced to the sole unprivileged CT1001: the older description of a
+> running CT1000 stage and the selection of AnsibleForms as the primary
+> user interface are **historical**, not current operating instructions.
+> [ADR-003](ADR-003-LLM-CHAT-FIRST-PLATFORM.md) makes the LLM chat the
+> primary tobe4home UI, with AnsibleForms as its background workflow
+> engine. The chat UI is not implemented in the current bootstrap.
+> See [safe rebootstrap gates](REBOOTSTRAP-CHAT-FIRST.md) before considering
+> deletion and replacement of the functioning CT1001.
+>
 ## Context
 
 The stage-0 prototype currently provisions `CT 1000 (tb4h-setup)` with a small HTTPS form. It then provisions `CT 1001 (tb4h-ansible)` via an explicit host-side script. Keeping both as permanent control-plane services duplicates wizard, configuration, maintenance, credentials and recovery concerns.
