@@ -4,6 +4,21 @@
 
 tobe4home is a modular Infrastructure-as-Code project for people who want to operate selected services on their own hardware. It focuses on reproducible deployments, isolated containers, identity and access management, networking, backups, and transparent operations.
 
+## New: isolated Chat MVP (CT1001, preview-only)
+
+A real, German-language LLM chat prototype now exists in
+[chat/](chat/) with [setup documentation](docs/CHAT-MVP.md).
+A separate reviewed installer
+[`deploy-chat-mvp-1001.sh`](bootstrap/deploy-chat-mvp-1001.sh)
+can add it to **the existing CT1001** after interactive `CHAT 1001`
+approval. It starts **only at 127.0.0.1:8765 inside CT1001**,
+accessible via an authenticated SSH tunnel. You must separately supply
+an authorized HTTPS OpenAI-compatible model API before it can chat.
+The chat has **no Proxmox permissions, no Ansible execution and no
+automatic playbook generation/PR**. It is not yet part of
+`bootstrap/launch.sh`, which remains AnsibleForms-first until a
+complete Chat-first rebuild is tested. Do not delete the current CT1001.
+
 ## Chat-first target and reinstall safety
 
 **Do not destroy the currently working CT1001 to rebuild the same
