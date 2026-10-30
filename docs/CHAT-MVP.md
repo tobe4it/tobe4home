@@ -65,6 +65,34 @@ Then open `http://127.0.0.1:8765/` in that computer's browser. The SSH connectio
 
 The new Chat service **does not reuse AnsibleForms authentication** and is not accessible through the existing AnsibleForms HTTPS URL. An integrated, authenticated Chat-first web entrypoint is a later deliverable.
 
+## Recovery when systemd fails after installation
+
+On the first real `--apply`, the application files and unit may already be
+created even when `systemctl is-active tb4h-chat` fails. **Do not destroy
+CT1001 or delete the files.** Inspect the new unit and directory traversal:
+
+```bash
+sudo pct exec 1001 -- systemctl status tb4h-chat --no-pager -l
+sudo pct exec 1001 -- journalctl -u tb4h-chat -n 40 --no-pager
+sudo pct exec 1001 -- namei -l /opt/tobe4home/chat/server.py
+sudo pct exec 1001 -- namei -l /etc/tobe4home/chat.json
+```
+
+The original installer used `Path.mkdir(mode=0755)` without accounting for
+a restrictive inherited `umask 077`. This could leave directories at
+`0700`, causing `User=tb4h-chat` to fail with `200/CHDIR` or fail
+reading `/etc/tobe4home/chat.json`. The corrected, idempotent installer
+verifies ownership and changes **only its three root-owned directories**
+to `0755`, and restarts **only its own unit**. It refuses unrelated
+permissions, unexpected owners, and locally modified program files.
+
+After updating the checked-out development branch, run the **read-only**
+`deploy-chat-mvp-1001.sh` preview, then the explicit
+`deploy-chat-mvp-1001.sh --apply` with `CHAT 1001` again. This recovers
+an incomplete first installation without resetting AnsibleForms, MariaDB,
+or CT1001. If it still fails, provide the bounded unit status/journal output
+rather than attempting broad `chmod -R` or disabling service isolation.
+
 ## Remaining gates
 
 This MVP does **not** generate or persist Ansible playbooks, run CI/PR workflows, provision Proxmox guests, discover services inside existing LXC, or approve/execute changes. Those capabilities remain documented in [ADR-003](ADR-003-LLM-CHAT-FIRST-PLATFORM.md) and GitHub Issue #4. The safe reinstall decision and external backup gates remain in [REBOOTSTRAP-CHAT-FIRST](REBOOTSTRAP-CHAT-FIRST.md).
