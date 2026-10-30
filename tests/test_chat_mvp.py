@@ -78,7 +78,7 @@ class ChatMvpTests(unittest.TestCase):
             result=chat.call_model({"api_url":"https://llm.example.org/v1/chat/completions","model":"test"},
                                    [{"role":"user","content":"Plane einen DNS-Filter"}])
         self.assertEqual(result,"Nur ein Vorschlag")
-        self.assertEqual(captured["body"]["tools"],[])
+        self.assertNotIn("tools",captured["body"])
         self.assertEqual(captured["body"]["messages"][0]["role"],"system")
         self.assertEqual(captured["body"]["messages"][-1]["role"],"user")
         self.assertNotIn("Authorization",captured["headers"])
