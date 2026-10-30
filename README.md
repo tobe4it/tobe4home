@@ -4,6 +4,24 @@
 
 tobe4home is a modular Infrastructure-as-Code project for people who want to operate selected services on their own hardware. It focuses on reproducible deployments, isolated containers, identity and access management, networking, backups, and transparent operations.
 
+## Chat-first target and reinstall safety
+
+**Do not destroy the currently working CT1001 to rebuild the same
+AnsibleForms-only controller.** The current `bootstrap/launch.sh` is an
+**experimental AnsibleForms/bootstrap test**, not a completed LLM-chat
+installer. The desired product starts in an authenticated tobe4home
+AI chat, generates/reviews Ansible artifacts and provisions only after
+explicitly approved, bounded plans. **Those features are not installed yet.**
+
+The supported bootstrap route and legacy Stage-0/Stage-1 scripts,
+the prerequisite tests for a Chat-first replacement and the **separate,
+operator-confirmed** CT1001 reset are documented in
+[Safe Chat-first Rebootstrap](docs/REBOOTSTRAP-CHAT-FIRST.md).
+No host cleanup is authorized by a Git commit or a green CI run.
+Do not issue `reset-controller.sh --destroy` before the replacement
+chat UI passes isolated acceptance tests, and preserve an externally
+validated recovery backup.
+
 ## Project scope
 
 - Proxmox VE and Linux containers
