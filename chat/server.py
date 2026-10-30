@@ -60,9 +60,13 @@ def config_from(raw: object) -> dict:
     local = parsed.hostname in {"127.0.0.1", "::1"}
     if (parsed.scheme != "https" and not (parsed.scheme == "http" and local)):
         raise ChatError("LLM-API erfordert TLS; HTTP nur für localhost")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ChatError("Ungültiger LLM-API-Port") from exc
     if (parsed.username or parsed.password or parsed.query or parsed.fragment or
             parsed.path != "/v1/chat/completions" or not parsed.hostname or
-            not parsed.port and parsed.netloc.endswith(":")):
+            (port is None and parsed.netloc.endswith(":"))):
         raise ChatError("Ungültige LLM-API-Adresse")
     if len(url) > 500:
         raise ChatError("LLM-API-Adresse zu lang")
@@ -93,7 +97,7 @@ def validated_messages(payload: object) -> list[dict[str, str]]:
     for msg in messages:
         if not isinstance(msg, dict) or set(msg) != {"role", "content"}:
             raise ChatError("Ungültige Nachrichtenstruktur")
-        if msg["role"] not in ALLOWED_ROLES or not isinstance(msg["content"], str):
+        if not isinstance(msg["role"], str) or msg["role"] not in ALLOWED_ROLES or not isinstance(msg["content"], str):
             raise ChatError("Unzulässige Nachricht")
         content = msg["content"].strip()
         if not 1 <= len(content) <= 1600 or "\x00" in content:
@@ -215,7 +219,7 @@ def make_handler(config: dict):
                 self.respond(403, {"error": "Chat-Zugriff nicht autorisiert"})
                 return
             length = self.headers.get("Content-Length", "")
-            if not length.isdecimal() or not 1 <= int(length) <= MAX_REQUEST:
+            if not length.isdecimal() or len(length) > 5 or not 1 <= int(length) <= MAX_REQUEST:
                 self.respond(413, {"error": "Nachricht zu groß"})
                 return
             if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
