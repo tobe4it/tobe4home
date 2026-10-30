@@ -124,8 +124,9 @@ def install(stage: Path = STAGE, app: Path = APP, etc: Path = ETC,
         if (etc / "chat.json").exists() or (etc / "chat.json").is_symlink():
             checked_json(regular(etc / "chat.json", {0}, 2048))
         if (etc / "llm-api-key").exists() or (etc / "llm-api-key").is_symlink():
-            key = regular(etc / "llm-api-key", {0}, 2048)
             i = (etc / "llm-api-key").lstat()
+            if not stat.S_ISREG(i.st_mode) or i.st_nlink != 1 or i.st_uid != 0 or i.st_size > 2048:
+                raise ValueError("Invalid LLM token file")
             if i.st_mode & 0o077:
                 raise ValueError("LLM token file must be root-only")
     if service.exists() or service.is_symlink():
@@ -141,7 +142,12 @@ def install(stage: Path = STAGE, app: Path = APP, etc: Path = ETC,
     result = {}
     for name, blob in files.items():
         result[name] = "CREATED" if create_exclusive(app / name, blob) else "UNCHANGED"
-    result["chat.json"] = ("CREATED" if create_exclusive(etc / "chat.json", DEFAULT_CONFIG) else "UNCHANGED")
+    # Preserve locally configured model settings across reruns.
+    if (etc / "chat.json").exists():
+        result["chat.json"] = "PRESERVED"
+    else:
+        create_exclusive(etc / "chat.json", DEFAULT_CONFIG)
+        result["chat.json"] = "CREATED"
     if not (etc / "llm-api-key").exists():
         os.close(os.open(etc / "llm-api-key", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600))
     result["tb4h-chat.service"] = ("CREATED" if create_exclusive(service, SERVICE_TEXT.encode()) else "UNCHANGED")
