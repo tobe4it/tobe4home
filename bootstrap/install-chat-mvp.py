@@ -59,6 +59,31 @@ def strict_dir(path: Path, allowed_owners: set[int]) -> None:
         raise ValueError(f"Unsafe directory: {path}")
 
 
+def ensure_runtime_directory(path: Path, owner: int = 0) -> None:
+    """Repair only our controlled 0700 directories to explicit 0755.
+
+    pct exec may inherit the host bootstrap's umask 077, overriding
+    Path.mkdir(mode=0o755). The non-root systemd User/WorkingDirectory
+    then fails at CHDIR before server.py can run.
+    """
+    if not path.exists() and not path.is_symlink():
+        path.mkdir(mode=0o755)
+    strict_dir(path, {owner})
+    info = path.lstat()
+    current = stat.S_IMODE(info.st_mode)
+    if current not in (0o700, 0o755):
+        raise ValueError(f"Unexpected chat directory permissions: {path}")
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        opened = os.fstat(fd)
+        if (opened.st_ino != info.st_ino or opened.st_dev != info.st_dev
+                or opened.st_uid != owner):
+            raise ValueError("Chat directory changed during permission check")
+        os.fchmod(fd, 0o755)
+    finally:
+        os.close(fd)
+
+
 def regular(path: Path, owners: set[int], limit: int = MAX_SIZE) -> bytes:
     st = path.lstat()
     if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or
@@ -133,12 +158,13 @@ def install(stage: Path = STAGE, app: Path = APP, etc: Path = ETC,
         if regular(service, {0}) != SERVICE_TEXT.encode():
             raise ValueError("Existing systemd chat unit conflicts")
     # All existing collisions are checked before writing anything.
-    if not app.parent.exists():
-        app.parent.mkdir(mode=0o755)
-    if not app.exists():
-        app.mkdir(mode=0o755)
-    if not etc.exists():
-        etc.mkdir(mode=0o755)
+    # Explicit fd-based mode repair is essential under umask 077:
+    # otherwise systemd User=tb4h-chat cannot traverse WorkingDirectory
+    # or load the root-owned, world-readable nonsecret config file.
+    # Only these three controlled root-owned directories are changed.
+    ensure_runtime_directory(app.parent)
+    ensure_runtime_directory(app)
+    ensure_runtime_directory(etc)
     result = {}
     for name, blob in files.items():
         result[name] = "CREATED" if create_exclusive(app / name, blob) else "UNCHANGED"
@@ -152,7 +178,10 @@ def install(stage: Path = STAGE, app: Path = APP, etc: Path = ETC,
         os.close(os.open(etc / "llm-api-key", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600))
     result["tb4h-chat.service"] = ("CREATED" if create_exclusive(service, SERVICE_TEXT.encode()) else "UNCHANGED")
     subprocess.run(["systemctl", "daemon-reload"], check=True)
-    subprocess.run(["systemctl", "enable", "--now", "tb4h-chat"], check=True)
+    subprocess.run(["systemctl", "enable", "tb4h-chat"], check=True)
+    # Rerunning the approved installer must recover a failed first start.
+    # Restart ONLY the verified, tobe4home-owned unit, not AnsibleForms.
+    subprocess.run(["systemctl", "restart", "tb4h-chat"], check=True)
     return result
 
 
