@@ -62,12 +62,21 @@ else
     die "Port 8765 is occupied by another service"
   fi
 fi
-if ! pct exec 1001 -- id -u tb4h-chat >/dev/null 2>&1; then
-  pct exec 1001 -- useradd --system --no-create-home --shell /sbin/nologin tb4h-chat ||
-    die "Cannot create isolated service account"
+if ! pct exec 1001 -- getent group tb4h-chat >/dev/null 2>&1; then
+  pct exec 1001 -- groupadd --system tb4h-chat ||
+    die "Cannot create isolated chat group"
 fi
-pct exec 1001 -- test "$(pct exec 1001 -- id -u tb4h-chat)" != 0 ||
-  die "Chat account must be unprivileged"
+if ! pct exec 1001 -- id -u tb4h-chat >/dev/null 2>&1; then
+  pct exec 1001 -- useradd --system --gid tb4h-chat --no-create-home --shell /sbin/nologin tb4h-chat ||
+    die "Cannot create isolated chat account"
+fi
+UID_CHAT="$(pct exec 1001 -- id -u tb4h-chat)" || die "Chat account missing"
+GID_CHAT="$(pct exec 1001 -- id -g tb4h-chat)" || die "Chat account missing"
+GID_GROUP="$(pct exec 1001 -- getent group tb4h-chat | cut -d: -f3)" ||
+  die "Chat group missing"
+[[ "$UID_CHAT" =~ ^[0-9]+$ && "$UID_CHAT" != 0 &&
+   "$GID_CHAT" == "$GID_GROUP" ]] ||
+  die "Chat service user/group identity mismatch"
 pct exec 1001 -- install -d -m 0700 /var/lib/tobe4home/chat-stage
 for asset in server.py index.html app.js app.css; do
   pct push 1001 "$ROOT/chat/$asset" \
