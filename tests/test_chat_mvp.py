@@ -155,6 +155,44 @@ class ChatMvpTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             installer.checked_json(b'{"api_url":"x","model":"y","token":"secret"}')
 
+    def test_chat_directory_permissions_are_umask_independent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            target = parent / "chat"
+            # Real host bootstrap uses umask 077; Python mkdir(mode=0755)
+            # otherwise creates 0700 and systemd fails with status 200/CHDIR.
+            previous = os.umask(0o077)
+            try:
+                installer.ensure_runtime_directory(target, os.getuid())
+            finally:
+                os.umask(previous)
+            self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+            installer.ensure_runtime_directory(target, os.getuid())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+            os.chmod(target, 0o700)
+            installer.ensure_runtime_directory(target, os.getuid())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+            os.chmod(target, 0o750)
+            with self.assertRaises(ValueError):
+                installer.ensure_runtime_directory(target, os.getuid())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o750)
+            target.rmdir()
+            target.symlink_to(parent)
+            with self.assertRaises(ValueError):
+                installer.ensure_runtime_directory(target, os.getuid())
+
+    def test_runtime_installer_only_repairs_own_directories_and_services(self):
+        code = INSTALLER.read_text()
+        self.assertIn("ensure_runtime_directory(app.parent)", code)
+        self.assertIn("ensure_runtime_directory(app)", code)
+        self.assertIn("ensure_runtime_directory(etc)", code)
+        self.assertIn('os.fchmod(fd, 0o755)', code)
+        self.assertIn('["systemctl", "restart", "tb4h-chat"]', code)
+        self.assertNotIn('["systemctl", "restart", "ansibleforms"]', code)
+        deploy = DEPLOY.read_text()
+        self.assertIn("journalctl -u tb4h-chat -n 25", deploy)
+        self.assertIn("Chat systemd service or loopback health is unhealthy", deploy)
+
     def test_deployer_requires_explicit_approval_and_cannot_destroy_guests(self):
         script=DEPLOY.read_text()
         self.assertIn("check-controller-config.py",script)
