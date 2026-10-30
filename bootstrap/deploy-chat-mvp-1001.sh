@@ -88,12 +88,26 @@ pct push 1001 "$ROOT/bootstrap/install-chat-mvp.py" \
   die "Cannot stage chat installer"
 pct exec 1001 -- python3 /var/lib/tobe4home/install-chat-mvp.py ||
   die "Chat install refused; no controller deletion"
-pct exec 1001 -- systemctl is-active --quiet tb4h-chat ||
-  die "Chat service did not start; review its journal"
-
-STATE="$(pct exec 1001 -- curl -fsS --max-time 5 \
-  -H 'Host: 127.0.0.1:8765' http://127.0.0.1:8765/api/status)" ||
-  die "Chat loopback endpoint unhealthy"
+# Simple services may be briefly in "activating" after systemd restart.
+# Require an actual HTTP response, not merely a systemd 'active' state.
+READY=0
+STATE=""
+for attempt in 1 2 3 4 5 6 7 8; do
+  if pct exec 1001 -- systemctl is-active --quiet tb4h-chat &&
+     STATE="$(pct exec 1001 -- curl -fsS --max-time 3 \
+       -H 'Host: 127.0.0.1:8765' http://127.0.0.1:8765/api/status 2>/dev/null)"; then
+    READY=1
+    break
+  fi
+  [[ "$attempt" == 8 ]] || sleep 2
+done
+if (( READY != 1 )); then
+  # Bounded diagnostics of ONLY this new service. Do not reset the CT or
+  # mask failures with a blind chmod over unrelated host paths.
+  pct exec 1001 -- systemctl status tb4h-chat --no-pager -l || true
+  pct exec 1001 -- journalctl -u tb4h-chat -n 25 --no-pager || true
+  die "Chat systemd service or loopback health is unhealthy; CT1001 preserved"
+fi
 python3 - "$STATE" <<'PY' || die "Unsafe/unexpected chat health response"
 import json,sys
 data=json.loads(sys.argv[1])
