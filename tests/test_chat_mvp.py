@@ -4,6 +4,7 @@ from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -136,14 +137,20 @@ class ChatMvpTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
             path=root/"app.py"
-            self.assertTrue(installer.create_exclusive(path,b"known code"))
-            self.assertFalse(installer.create_exclusive(path,b"known code"))
-            with self.assertRaises(ValueError):
-                installer.create_exclusive(path,b"new code")
-            path.unlink()
-            path.symlink_to(root/"target")
-            with self.assertRaises((ValueError,OSError)):
-                installer.create_exclusive(path,b"new code")
+            real_regular=installer.regular
+            # CI is unprivileged; the real installer requires root-owned
+            # files. Accept runner-owned files only in this unit test.
+            def ci_regular(file, owners, limit=installer.MAX_SIZE):
+                return real_regular(file, owners | {os.getuid()}, limit)
+            with patch.object(installer,"regular",side_effect=ci_regular):
+                self.assertTrue(installer.create_exclusive(path,b"known code"))
+                self.assertFalse(installer.create_exclusive(path,b"known code"))
+                with self.assertRaises(ValueError):
+                    installer.create_exclusive(path,b"new code")
+                path.unlink()
+                path.symlink_to(root/"target")
+                with self.assertRaises((ValueError,OSError)):
+                    installer.create_exclusive(path,b"new code")
         installer.checked_json(b'{"api_url":"https://example.org/v1/chat/completions","model":"test"}')
         with self.assertRaises(ValueError):
             installer.checked_json(b'{"api_url":"x","model":"y","token":"secret"}')
