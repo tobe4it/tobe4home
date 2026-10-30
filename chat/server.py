@@ -122,7 +122,6 @@ def call_model(config: dict, messages: list[dict], credential_dir: str = "") -> 
         "stream": False,
         "temperature": 0.2,
         "max_tokens": 1400,
-        "tools": [],
     }, ensure_ascii=False).encode()
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if credential_dir:
