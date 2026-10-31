@@ -6,13 +6,15 @@
   become: true
   gather_facts: false
   vars:
-    paperless_audit_address: "{{ mail_backend_paperless_account }}@{{ mail_backend_primary_domain }}"
+    paperless_audit_account: "{{ mail_backend_paperless_account | default('paperless') }}"
+    paperless_audit_alias_map: "{{ mail_backend_alias_map | default('/etc/postfix/virtual_aliases') }}"
+    paperless_audit_address: "{{ paperless_audit_account }}@{{ mail_backend_primary_domain }}"
   tasks:
     - name: Validate audit inputs
       ansible.builtin.assert:
         that:
           - mail_backend_primary_domain | length > 0
-          - mail_backend_paperless_account | length > 0
+          - paperless_audit_account | length > 0
           - mail_backend_paperless_scan_domain | length > 0
           - mail_backend_paperless_scan_domain in mail_backend_identity_domains
         fail_msg: >-
@@ -61,7 +63,7 @@
           - postmap
           - -q
           - "scan-familie@{{ mail_backend_paperless_scan_domain }}"
-          - "hash:{{ mail_backend_alias_map }}"
+          - "hash:{{ paperless_audit_alias_map }}"
       register: paperless_audit_family_alias
       changed_when: false
       failed_when: false
@@ -72,7 +74,7 @@
           - postmap
           - -q
           - "scan-eltern@{{ mail_backend_paperless_scan_domain }}"
-          - "hash:{{ mail_backend_alias_map }}"
+          - "hash:{{ paperless_audit_alias_map }}"
       register: paperless_audit_parents_alias
       changed_when: false
       failed_when: false
@@ -86,6 +88,6 @@
           - "Postfix + delimiter: {{ paperless_audit_postfix_delimiter.stdout | trim == '+' }}"
           - "Dovecot + delimiter: {{ paperless_audit_dovecot_delimiter.rc == 0 and paperless_audit_dovecot_delimiter.stdout | trim == '+' }}"
           - "Sieve package installed: {{ paperless_audit_package.rc == 0 and 'install ok installed' in paperless_audit_package.stdout }}"
-          - "Family address resolves correctly: {{ paperless_audit_family_alias.stdout | trim == (mail_backend_paperless_account ~ '+familie@' ~ mail_backend_primary_domain) }}"
-          - "Parents address resolves correctly: {{ paperless_audit_parents_alias.stdout | trim == (mail_backend_paperless_account ~ '+eltern@' ~ mail_backend_primary_domain) }}"
+          - "Family address resolves correctly: {{ paperless_audit_family_alias.stdout | trim == (paperless_audit_account ~ '+familie@' ~ mail_backend_primary_domain) }}"
+          - "Parents address resolves correctly: {{ paperless_audit_parents_alias.stdout | trim == (paperless_audit_account ~ '+eltern@' ~ mail_backend_primary_domain) }}"
           - "No messages sent, no change performed. A route test still requires real SMTP -> LMTP delivery."
