@@ -15,7 +15,7 @@
 
 - name: Install Postfix, Dovecot and LDAP dependencies
   ansible.builtin.apt:
-    name: "{{ mail_backend_packages }}"
+    name: "{{ mail_backend_packages + (['dovecot-sieve'] if mail_backend_paperless_intake_enabled | bool else []) }}"
     state: present
     update_cache: true
     cache_valid_time: 3600
