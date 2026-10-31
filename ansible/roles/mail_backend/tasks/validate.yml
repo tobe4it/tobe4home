@@ -114,7 +114,7 @@
       - mail_backend_paperless_scan_domain in mail_backend_identity_domains
       - mail_backend_paperless_account is match('^[a-z0-9][a-z0-9._-]*$')
       - mail_backend_paperless_account not in ['postmaster', 'root']
-      - mail_backend_paperless_mailboxes | length == 24
+      - mail_backend_paperless_mailboxes | length == 25
       - mail_backend_paperless_mailboxes | unique | length == mail_backend_paperless_mailboxes | length
       - >-
         mail_backend_paperless_mailboxes | difference([
