@@ -8,6 +8,10 @@
 - name: Create mail backend accounts and directories
   ansible.builtin.import_tasks: directories.yml
 
+- name: Preflight existing Paperless service mailbox (read-only)
+  ansible.builtin.import_tasks: paperless_intake_preflight.yml
+  when: mail_backend_paperless_intake_enabled | bool
+
 - name: Configure TLS material
   ansible.builtin.import_tasks: tls.yml
 
@@ -22,3 +26,7 @@
 
 - name: Validate the running mail backend
   ansible.builtin.import_tasks: validate_runtime.yml
+
+- name: Provision Paperless mail folders and controlled Sieve routing
+  ansible.builtin.import_tasks: paperless_intake.yml
+  when: mail_backend_paperless_intake_enabled | bool
