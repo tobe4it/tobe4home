@@ -2,3 +2,8 @@
 {% for alias in mail_backend_aliases | sort(attribute='address') %}
 {{ alias.address }} {{ alias.recipients | join(',') }}
 {% endfor %}
+{% if mail_backend_paperless_intake_enabled | bool %}
+# Receive-only aliases. Never add these to sender_login_aliases.
+scan-familie@{{ mail_backend_paperless_scan_domain }} {{ mail_backend_paperless_account }}+familie@{{ mail_backend_primary_domain }}
+scan-eltern@{{ mail_backend_paperless_scan_domain }} {{ mail_backend_paperless_account }}+eltern@{{ mail_backend_primary_domain }}
+{% endif %}
