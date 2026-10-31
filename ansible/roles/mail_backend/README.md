@@ -164,3 +164,27 @@ compare the authenticated login with the RFC 5322 `From:` header. A production
 cutover must either add a suitable policy/Milter check or document and accept
 that limitation. The public gateway must not be treated as the enforcement
 point because it no longer sees the original authenticated client.
+ 
+## Paperless email intake (optional, disabled by default)
+
+Opt-in inputs: `mail_backend_paperless_intake_enabled` (default `false`),
+`mail_backend_paperless_scan_domain` (a domain from `mail_backend_identity_domains`),
+and an existing `Mailuser` LDAP account `mail_backend_paperless_account` (default
+`paperless`). The role never creates LDAP accounts.
+
+When enabled, only two *receive-only* Postfix aliases are added to the existing
+virtual alias map: `scan-familie@DOMAIN` → `paperless+familie@PRIMARY` and
+`scan-eltern@DOMAIN` → `paperless+eltern@PRIMARY`. Sieve on LMTP sorts
+the envelope detail into `Familie/Eingang` or `Eltern/Eingang`. Unknown
+details stay in the technical `INBOX`, which Paperless **must not** poll.
+The role provisions the planned personal/parent/family folders create-only,
+refuses to replace any existing unmanaged Sieve script, and tests both aliases
+through `postmap`. It **does not** grant shared IMAP ACLs, create Paperless
+rules, authenticate Epson delivery or activate automatic archiving.
+
+This introduces the Sieve LMTP plugin for all local users when enabled.
+Review existing user Sieve files and ensure no unintended existing scripts
+are activated. End-to-end verification of Postfix → LMTP envelope detail,
+cross-user IMAP ACLs and Paperless document ownership is mandatory before
+the source-controlled feature is merged or production-enabled. See
+`docs/PAPERLESS-MAIL-INTAKE.md`.
