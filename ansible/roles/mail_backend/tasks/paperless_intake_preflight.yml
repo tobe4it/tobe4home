@@ -22,6 +22,29 @@
       LDAP Mailuser must already be provisioned. Do not create it as a side
       effect of mail-backend automation.
 
+- name: Check that enabling Sieve cannot activate unrelated user scripts
+  ansible.builtin.command:
+    argv:
+      - find
+      - "{{ mail_backend_mail_root }}"
+      - -name
+      - .dovecot.sieve
+      - -not
+      - -path
+      - "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}/.dovecot.sieve"
+      - -print
+      - -quit
+  register: paperless_mail_intake_other_sieve
+  changed_when: false
+
+- name: Refuse global Sieve enablement while unrelated scripts exist
+  ansible.builtin.assert:
+    that:
+      - paperless_mail_intake_other_sieve.stdout | trim | length == 0
+    fail_msg: >-
+      Other mailbox Sieve scripts exist. Enabling the LMTP Sieve plugin would
+      activate additional scripts; audit/migrate those before proceeding.
+
 - name: Inspect any existing personal Sieve script
   ansible.builtin.stat:
     path: "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}/.dovecot.sieve"
