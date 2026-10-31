@@ -69,7 +69,7 @@ class SafetyContractTests(unittest.TestCase):
         self.assertIn('envelope :detail :is "to" "familie"', script)
         self.assertIn('envelope :detail :is "to" "eltern"', script)
         self.assertIn("keep;", script)
-        self.assertNotRegex(script, r'(?im)^\\s*(discard|redirect)\\s*;')
+        self.assertNotRegex(script, r'(?im)^\s*(discard|redirect)\s*;')
         self.assertNotIn('header :contains "Subject"', script)
         self.assertNotIn('fileinto :create', script)
 
