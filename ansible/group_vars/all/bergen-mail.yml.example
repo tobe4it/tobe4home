@@ -135,3 +135,16 @@ mail_backend_aliases:
       - user@example.net
     send_as:
       - reolink-camera
+
+# Example: paperless@thebergens.net must exist in LDAP and belong to Mailuser
+# BEFORE enabling this. Identity / served domain membership must be verified.
+# Existing mail delivery and Synology scan integrations are not modified.
+#
+# mail_backend_paperless_intake_enabled: false
+# mail_backend_paperless_scan_domain: thebergens.net
+#
+# Receives only (never Send-as):
+# scan-familie@thebergens.net -> paperless+familie@PRIMARY_DOMAIN
+# scan-eltern@thebergens.net  -> paperless+eltern@PRIMARY_DOMAIN
+#
+# Rollout is intentionally separate from shared IMAP ACLs and Paperless rules.
