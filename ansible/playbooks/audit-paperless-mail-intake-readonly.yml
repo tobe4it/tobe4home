@@ -8,6 +8,7 @@
   vars:
     paperless_audit_account: "{{ mail_backend_paperless_account | default('paperless') }}"
     paperless_audit_alias_map: "{{ mail_backend_alias_map | default('/etc/postfix/virtual_aliases') }}"
+    paperless_audit_scan_domain: "{{ mail_backend_paperless_scan_domain | default('') }}"
     paperless_audit_address: "{{ paperless_audit_account }}@{{ mail_backend_primary_domain }}"
   tasks:
     - name: Validate audit inputs
@@ -15,8 +16,8 @@
         that:
           - mail_backend_primary_domain | length > 0
           - paperless_audit_account | length > 0
-          - mail_backend_paperless_scan_domain | length > 0
-          - mail_backend_paperless_scan_domain in mail_backend_identity_domains
+          - paperless_audit_scan_domain | length > 0
+          - paperless_audit_scan_domain in mail_backend_identity_domains
         fail_msg: >-
           Load the ignored live bergen-mail site variables (and LDAP secrets
           through Vault) before auditing, without enabling the intake role.
@@ -62,7 +63,7 @@
         argv:
           - postmap
           - -q
-          - "scan-familie@{{ mail_backend_paperless_scan_domain }}"
+          - "scan-familie@{{ paperless_audit_scan_domain }}"
           - "hash:{{ paperless_audit_alias_map }}"
       register: paperless_audit_family_alias
       changed_when: false
@@ -73,7 +74,7 @@
         argv:
           - postmap
           - -q
-          - "scan-eltern@{{ mail_backend_paperless_scan_domain }}"
+          - "scan-eltern@{{ paperless_audit_scan_domain }}"
           - "hash:{{ paperless_audit_alias_map }}"
       register: paperless_audit_parents_alias
       changed_when: false
