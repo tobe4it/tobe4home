@@ -51,6 +51,38 @@ mail_backend_ldap_mailbox_map: /etc/postfix/ldap_mailboxes.cf
 mail_backend_ldap_domain_alias_map: /etc/postfix/ldap_domain_aliases.cf
 
 mail_backend_aliases: []
+# Opt-in only: requires an existing LDAP Mailuser service identity, a verified
+# productive mailbox domain and independent Paperless ACL acceptance.
+mail_backend_paperless_intake_enabled: false
+mail_backend_paperless_scan_domain: ""
+mail_backend_paperless_account: paperless
+mail_backend_paperless_mailboxes:
+  - Privat
+  - Privat/thomas
+  - Privat/thomas/Eingang
+  - Privat/thomas/Verarbeitet
+  - Privat/thomas/Fehler
+  - Privat/nadja
+  - Privat/nadja/Eingang
+  - Privat/nadja/Verarbeitet
+  - Privat/nadja/Fehler
+  - Privat/nils
+  - Privat/nils/Eingang
+  - Privat/nils/Verarbeitet
+  - Privat/nils/Fehler
+  - Privat/linda
+  - Privat/linda/Eingang
+  - Privat/linda/Verarbeitet
+  - Privat/linda/Fehler
+  - Eltern
+  - Eltern/Eingang
+  - Eltern/Verarbeitet
+  - Eltern/Fehler
+  - Familie
+  - Familie/Eingang
+  - Familie/Verarbeitet
+  - Familie/Fehler
+
 
 mail_backend_ldap_uri: ""
 mail_backend_ldap_user_search_base: ""
