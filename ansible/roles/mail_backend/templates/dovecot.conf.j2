@@ -96,6 +96,16 @@ service imap-login {
   }
 }
 
+{% if mail_backend_paperless_intake_enabled | bool %}
+# Sieve runs only for mailboxes with an active per-user script. The only
+# managed script is the Paperless technical account's .dovecot.sieve.
+recipient_delimiter = +
+{% endif %}
 protocol lmtp {
   postmaster_address = {{ mail_backend_postmaster_address }}
+{% if mail_backend_paperless_intake_enabled | bool %}
+  mail_plugins {
+    sieve = yes
+  }
+{% endif %}
 }
