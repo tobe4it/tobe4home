@@ -61,7 +61,52 @@ Workflows auf `Consumption Started` mit **Filter auf die spezifische Mailregel**
 
 Paperless kann den Originalanhang aufnehmen und eine Mail danach verschieben; laut Dokumentation kann der eigentliche Dokumentverarbeitungsprozess danach noch scheitern. `Verarbeitet` bedeutet daher nur „vom Mail-Consumer angenommen“, **nicht** automatisch „Dokument abschließend OCR-verarbeitet und berechtigt archiviert“. Für einen belastbaren Ende-zu-Ende-Nachweis sind Dokument-ID, Eigentümer, ACL, Verarbeitungsstatus und IMAP-Metadaten getrennt zu prüfen. `Fehler` dient zunächst als manuelle Nachbearbeitung; Paperless verschiebt fehlgeschlagene Verarbeitungen nicht automatisch verlässlich dorthin.
 
-Direkte Zustelladressen `paperless-eltern@...` und `paperless-familie@...` wären eine spätere Erweiterung. Reine Postfix-Aliase auf das gemeinsame Konto würden beide Empfänger im selben `INBOX` mischen. Erst mit separat getesteter Sieve-/Envelope-Empfänger-Zuordnung auf die korrekten Eingangsordner aktivieren.
+## Epson ET-4750 und adressgesteuerter Scaneingang
+
+**Entscheidung:** Zwei Empfängeradressen für die gemeinsamen Scanbereiche, ohne Betreffkonvention:
+
+| Ziel im Epson / anderer Mailclient | Empfängeradresse (geplant, noch nicht produktiv) | Zustellung auf `paperless` |
+| --- | --- | --- |
+| Paperless Familie | `scan-familie@thebergens.net` | `Familie/Eingang` |
+| Paperless Eltern | `scan-eltern@thebergens.net` | `Eltern/Eingang` |
+
+Der Standardbetreff `Scan vom Drucker` kann bleiben. Betreff/Dateiname sind Metadaten, keine Berechtigungssteuerung. Die gleiche Empfängeradresse funktioniert auch beim manuellen Senden von Dokumenten über ein Mailprogramm. Die Mail-Domain muss in der tatsächlichen produktiven Mailkonfiguration existieren.
+
+### Epson-Gerätegrenze und Datenschutz
+
+Der vorhandene **Epson EcoTank ET-4750** bietet am Bedienfeld `Scan → Cloud` und versendet E-Mail-Scans **über Epson Connect**; dies ist keine direkte lokale SMTP-Anmeldung des Druckers am `bergen-mail`-Backend. Die beiden Ziele müssen gegebenenfalls in der Epson-Connect-Zielliste konfiguriert werden. Je Ziel ist ein eigener Anzeigename möglich. Epson erhält bei diesem Transportweg die Scandaten. Daher insbesondere für vertrauliche Eltern-Dokumente **den bereits vorhandenen lokalen Synology-Scannerpfad beibehalten und bevorzugen**. Die neuen E-Mail-Adressen sind eine ergänzende Eingangsmöglichkeit, kein Ersatz für den geschützten NAS-Scanworkflow.
+
+Referenzen:
+- https://epson.com/faq/SPT_C11CG19201~faq-0000603-et4750?faq_cat=faq-8796127569996
+- https://www.epsonconnect.com/guide/de/html/uses_2.htm
+- https://www.epsonconnect.com/help/de/html/scan_1.htm
+
+### Mailrouting: Ziel-E-Mailadresse → vorhandener Eingangsordner
+
+Nur **eingehend** definierte Aliase `scan-familie` und `scan-eltern` → `paperless+familie` bzw. `paperless+eltern`; Postfix und Dovecot LMTP müssen Detailadressen per `recipient_delimiter = +` erhalten, und Dovecot Sieve/Pigeonhole darf **nur die beiden explizit erlaubten Details** auf `Familie/Eingang` bzw. `Eltern/Eingang` per `fileinto` abbilden. Kein automatisches `fileinto :create`, kein offenes Wildcard-Subaddress-Mapping und kein Vertrauen in die sichtbare `To:`-Kopfzeile. Die effektive Envelope-Adresse muss durch SMTP- und LMTP-End-to-End-Tests nachgewiesen werden: Aliase und Postfix-Umschreibung können ansonsten den Detailteil verlieren. Alternativ, falls Detailadressen in dieser Installation nicht stabil beibehalten werden, zwei getrennte technische Empfangspostfächer anlegen und diese durch Paperless als gesonderte IMAP-Konten abonnieren; nicht auf Betrefftrennung zurückfallen.
+
+Für diese **empfangsseitigen** Scan-Aliase keine pauschale `send_as`-Erlaubnis vergeben. Die bestehende Mail-Backend-Rolle verlangt derzeit `send_as` für **jeden** Alias: Erweiterung für ausdrücklich `receive_only` deklarierte Aliase mit negativer SMTP-Submission-Prüfung erforderlich. Den bestehenden Sender-Autorisierungsvertrag nicht durch Dummy-Berechtigungen umgehen.
+
+### Mailsecurity und Annahmebedingungen
+
+- Ein öffentlicher Zielalias ist keine Authentifizierung. Der reine Empfängername darf nicht als Nachweis gelten, wer die Mail eingeworfen hat, und ist deshalb kein alleiniger Vertrauensanker für die automatische Archivierung in einem geschützten Bereich.
+- Der öffentliche MX2/Gateway prüft SPF/DKIM/DMARC und Rspamd; anwendungsspezifische Sender-Allowlist (nach verifizierter realer Epson-Connect-Sendeidentität und zusätzlich genau benannten Familienabsendern) bzw. separates Quarantäne-/Freigabeverfahren planen. Identische sichtbare From-Adressen von beliebigen Absendern nicht ungeprüft zulassen.
+- PDF-Anhänge begrenzen, unterstützte MIME-/Dateitypen testen, kein sofortiges Löschen der Quellmail. Doppelte Nachrichten, fehlende Anhänge und Fehlzuordnung sind Negativtests.
+- Paperless-Workflows werden **auf die tatsächlich konsumierende Mailregel** gefiltert, nicht auf Betreff oder ungeprüfte Absenderadresse. `Eltern` darf für Kinder keine Liste-, Lese-, Einlege- oder Dokumentrechte eröffnen.
+
+### Abnahme des Drucker-/Mail-Eingangs
+
+1. Epson-Cloud-Zielliste als optionalen, explizit cloudbasierten Versandweg kennzeichnen. Bestehenden lokalen NAS-Scanweg unverändert erhalten.
+2. Auf `bergen-mail`: `postmap -q`, lokaler SMTP-RCPT-Test (je Alias), Postfix-Queue / LMTP Logs und `doveadm mailbox list` auf korrekte Ordnerzustellung prüfen.
+3. Je Ziel einen Test-PDF-Anhang versenden; Betreff darf `Scan vom Drucker` sein, muss aber für die Trennung unerheblich sein.
+4. Nach gesichertem Paperless-Import die Dokument-Owner/ACL für Eltern/Familie und die Verschiebung nach `Verarbeitet` prüfen.
+5. Unbekannte Empfänger, falsche Absender, Anhang-lose Mails und Kinderzugriff auf Eltern gezielt negativ testen.
+6. Nur nach dokumentierter Abnahme die Aliase und Mailregeln produktiv freigeben.
+
+Dovecot-Referenzen:
+- https://doc.dovecot.org/2.4.5/core/config/delivery/lmtp.html
+- https://doc.dovecot.org/2.4.5/core/plugins/sieve.html
+- https://doc.dovecot.org/2.4.2/howto/sieve.html
 
 ## Reproduzierbare Implementierungsschritte (noch nicht ausgeführt)
 
