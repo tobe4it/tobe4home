@@ -1,5 +1,44 @@
 # Paperless-Mailablage auf bergen-mail – Entwurf / kein Produktiv-Cutover
 
+## Implementierungsstand: 31.10.2026, Draft PR #5
+
+**Codephase 1 im Entwicklungsbranch `feat/paperless-mail-intake` umgesetzt, produktiv nicht aktiviert.**
+
+Die Ansible-Mailrolle kann nach ausdrücklichem Opt-in zwei feste Scan-Empfängeradressen auf die Plusadressen `paperless+familie` / `paperless+eltern` umschreiben. Dovecot 2.4/LMTP und ein ausschließlich für das technische Paperless-Mailkonto bereitgestelltes Sieve-Skript ordnen die Envelope-Details den bestehenden Zielnamen `Familie/Eingang` und `Eltern/Eingang` zu. Unbekannte Details bleiben im technischen `INBOX`. Der Mailbox-Teil erzeugt die 25 Eltern-/Familien-/Privat-Ordner nur, wenn sie noch fehlen; bestehende Dokumente und Mails werden nicht gelöscht oder verschoben. Ein vorhandenes nicht durch die Rolle verwaltetes Sieve-Skript wird nicht überschrieben.
+
+**Noch nicht umgesetzt und deshalb nicht freigegeben:** Dovecot-Shared-IMAP-Namespace/ACL, tatsächliche Scanner-Anbindung, produktive LDAP-Kontoanlage, End-to-End-Postfix→LMTP→IMAP-Zustellung, Paperless-E-Mail-Regeln und Paperless-Dokumentrechte, automatisches Aufräumen. Die Sieve-Erweiterung darf nicht aktiviert werden, solange andere Benutzer-Sieve-Skripte vorhanden und ungeprüft sind.
+
+Die Änderungen sind standardmäßig inaktiv (`mail_backend_paperless_intake_enabled: false`) und bewusst ein **Draft**. Der Code ist ohne Zugang zum laufenden Bergen-Mailserver erstellt und benötigt eine reale Ansible-/Dovecot-Prüfung vor jeder Produktivfreigabe.
+
+### Prüfschritte auf dem Controller, ohne Produktivänderung
+
+1. Unveränderte standortspezifische Variablen `ansible/group_vars/all/bergen-mail.yml` und Vault gegen die aktive Hostkonfiguration prüfen; `mail_backend_paperless_scan_domain: thebergens.net` nur **nach** Bestätigung als tatsächlich bediente Domäne setzen. Das Audit benötigt die Scan-Domäne, aber **nicht** `mail_backend_paperless_intake_enabled: true`.
+2. Offline-Contract-Tests und Ansible-Syntax prüfen:
+
+   ```bash
+   python3 -m unittest discover -s tests -p 'test_paperless_mail_intake_contract.py'
+   ansible-playbook --syntax-check \
+     -i ansible/inventory.yml -i ansible/inventory.local.yml \
+     -e @ansible/group_vars/all/bergen-mail.yml \
+     ansible/playbooks/audit-paperless-mail-intake-readonly.yml
+   ```
+
+3. Nur lesendes Infrastruktur-Audit ausführen:
+
+   ```bash
+   ansible-playbook \
+     -i ansible/inventory.yml -i ansible/inventory.local.yml \
+     -e @ansible/group_vars/all/bergen-mail.yml \
+     ansible/playbooks/audit-paperless-mail-intake-readonly.yml \
+     --ask-vault-pass
+   ```
+
+4. Technisches LDAP-Konto `paperless` und die tatsächlichen `Mailuser`-Rechte gegen Dovecot und Synology prüfen. Vor `mail_backend_paperless_intake_enabled: true` ein überprüft wiederherstellbares Mail-Backup nachweisen.
+5. Nach gesonderter Aktivierungsfreigabe die bestehende Mail-Backend-Rolle verwenden; *kein* zusätzlicher öffentlicher MX, keine DNS-Änderung und keine Umstellung der bestehenden Scan-Quelle. Reale E-Mails erst nach erfolgreicher Empfänger-, ACL- und Paperless-Workflow-Abnahme senden.
+
+**Definition of Done für die Codephase 1:** Syntax-/Contract-Tests bestanden, LDAP-Servicekonto verifiziert, beide Aliase `postmap -q` korrekt, Dovecot und Sieve verifiziert, plusadressierte SMTP/LMTP-Testnachricht je Bereich im richtigen Ordner angekommen, unbekannte/abgewiesene Empfänger korrekt behandelt, keinerlei Änderung an den übrigen Benutzerpostfächern.
+
+
 Stand: 2026-10-31. Zielplattform: bestehender `bergen-mail`-LXC mit Postfix und Dovecot 2.4, bestehendes Paperless-ngx. Dieses Dokument beschreibt den gewünschten Sollzustand; der neue Branch erzeugt **noch keine** LDAP-Identitäten, Mailboxen, ACLs oder Paperless-Regeln.
 
 ## Zweck und bestehende Grenzen
