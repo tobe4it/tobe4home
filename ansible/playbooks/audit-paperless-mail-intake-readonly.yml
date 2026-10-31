@@ -43,7 +43,7 @@
 
     - name: Check current Sieve package installation
       ansible.builtin.command:
-        argv: [dpkg-query, -W, -f=${Status}, dovecot-sieve]
+        argv: [dpkg-query, -W, "-f=${Status}", dovecot-sieve]
       register: paperless_audit_package
       changed_when: false
       failed_when: false
