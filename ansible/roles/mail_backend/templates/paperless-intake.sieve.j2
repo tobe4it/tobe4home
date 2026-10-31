@@ -1,0 +1,16 @@
+# Managed by tobe4home Paperless mail intake.
+# The delivery target MUST come from the LMTP envelope detail, never
+# the visible To: header or a user-editable Subject: header.
+# Fail closed: unknown/missing details remain in technical INBOX.
+require ["fileinto", "envelope", "subaddress"];
+
+if envelope :detail :is "to" "familie" {
+  fileinto "Familie/Eingang";
+  stop;
+}
+elsif envelope :detail :is "to" "eltern" {
+  fileinto "Eltern/Eingang";
+  stop;
+}
+
+keep;
