@@ -1,0 +1,47 @@
+---
+# No changes here: only verify that the existing Mailuser account and
+# script destination can be used safely before Postfix/Dovecot are modified.
+- name: Resolve the dedicated Paperless mailbox via the existing LDAP userdb
+  ansible.builtin.command:
+    argv:
+      - doveadm
+      - user
+      - "{{ mail_backend_paperless_account }}@{{ mail_backend_primary_domain }}"
+  changed_when: false
+
+- name: Inspect the technical mailbox home
+  ansible.builtin.stat:
+    path: "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}"
+  register: paperless_mail_intake_home
+
+- name: Require existing provisioned mailbox home
+  ansible.builtin.assert:
+    that:
+      - paperless_mail_intake_home.stat.isdir | default(false)
+    fail_msg: >-
+      LDAP Mailuser must already be provisioned. Do not create it as a side
+      effect of mail-backend automation.
+
+- name: Inspect any existing personal Sieve script
+  ansible.builtin.stat:
+    path: "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}/.dovecot.sieve"
+  register: paperless_mail_intake_sieve_stat
+
+- name: Read existing Sieve script only if present
+  ansible.builtin.slurp:
+    src: "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}/.dovecot.sieve"
+  register: paperless_mail_intake_existing_sieve
+  when: paperless_mail_intake_sieve_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Refuse to overwrite an unmanaged Sieve script
+  ansible.builtin.assert:
+    that:
+      - >-
+        (paperless_mail_intake_existing_sieve.content | b64decode)
+        is search('^# Managed by tobe4home Paperless mail intake')
+    fail_msg: >-
+      The Paperless account already has an unmanaged Sieve script. Review
+      and migrate it explicitly; never replace it silently.
+  when: paperless_mail_intake_sieve_stat.stat.exists | default(false)
+  no_log: true
