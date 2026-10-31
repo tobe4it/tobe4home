@@ -1,0 +1,77 @@
+---
+# Only after explicit opt-in and a successful LDAP mailbox preflight.
+# IMAP ACL/public shares are deliberately NOT enabled in this phase.
+- name: List pre-existing folders in the Paperless technical mailbox
+  ansible.builtin.command:
+    argv:
+      - doveadm
+      - mailbox
+      - list
+      - -u
+      - "{{ mail_backend_paperless_account }}@{{ mail_backend_primary_domain }}"
+  register: paperless_mail_intake_existing_folders
+  changed_when: false
+
+- name: Create only missing Paperless mail folders
+  ansible.builtin.command:
+    argv:
+      - doveadm
+      - mailbox
+      - create
+      - -u
+      - "{{ mail_backend_paperless_account }}@{{ mail_backend_primary_domain }}"
+      - "{{ item }}"
+  loop: "{{ mail_backend_paperless_mailboxes }}"
+  when: item not in paperless_mail_intake_existing_folders.stdout_lines
+
+- name: Install the managed Paperless account Sieve rules
+  ansible.builtin.template:
+    src: paperless-intake.sieve.j2
+    dest: "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}/.dovecot.sieve"
+    owner: "{{ mail_backend_mail_user }}"
+    group: "{{ mail_backend_mail_group }}"
+    mode: "0600"
+    backup: true
+  register: paperless_mail_intake_sieve_installed
+
+- name: Compile the Paperless Sieve rules
+  ansible.builtin.command:
+    argv:
+      - sievec
+      - "{{ mail_backend_mail_root }}/{{ mail_backend_primary_domain }}/{{ mail_backend_paperless_account }}/.dovecot.sieve"
+  when: paperless_mail_intake_sieve_installed.changed
+
+- name: Verify scan-only aliases in the Postfix map
+  ansible.builtin.command:
+    argv:
+      - postmap
+      - -q
+      - "{{ item.address }}"
+      - "hash:{{ mail_backend_alias_map }}"
+  loop:
+    - address: "scan-familie@{{ mail_backend_paperless_scan_domain }}"
+      recipient: "{{ mail_backend_paperless_account }}+familie@{{ mail_backend_primary_domain }}"
+    - address: "scan-eltern@{{ mail_backend_paperless_scan_domain }}"
+      recipient: "{{ mail_backend_paperless_account }}+eltern@{{ mail_backend_primary_domain }}"
+  register: paperless_mail_intake_postmap
+  changed_when: false
+  failed_when: >-
+    paperless_mail_intake_postmap.rc != 0 or
+    paperless_mail_intake_postmap.stdout | trim != item.recipient
+
+- name: Verify all Paperless intake folders still exist
+  ansible.builtin.command:
+    argv:
+      - doveadm
+      - mailbox
+      - list
+      - -u
+      - "{{ mail_backend_paperless_account }}@{{ mail_backend_primary_domain }}"
+  register: paperless_mail_intake_verified_folders
+  changed_when: false
+
+- name: Fail if any expected Paperless mailbox is absent
+  ansible.builtin.assert:
+    that:
+      - mail_backend_paperless_mailboxes | difference(paperless_mail_intake_verified_folders.stdout_lines) | length == 0
+    fail_msg: Paperless mailbox provisioner did not expose every expected mailbox.
